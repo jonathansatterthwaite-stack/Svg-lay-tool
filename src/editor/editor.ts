@@ -38,6 +38,7 @@ import { CanvasView } from './canvas';
 import { el, isEditableTarget } from './dom';
 import { icon } from './icons';
 import { LayersPanel } from './layers-panel';
+import { LayerStrip } from './layer-strip';
 import { LibraryPanel } from './library-panel';
 import { PropertiesPanel } from './properties-panel';
 import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, type ThemeName } from './features';
@@ -122,6 +123,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private toolbar: Toolbar | null = null;
   private library: LibraryPanel | null = null;
   private layersPanel: LayersPanel | null = null;
+  private strip: LayerStrip | null = null;
   private propsPanel: PropertiesPanel | null = null;
   private disposers: (() => void)[] = [];
   private destroyed = false;
@@ -153,6 +155,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (panels.toolbar) this.toolbar = new Toolbar(this);
     if (panels.library) this.library = new LibraryPanel(this);
     this.canvas = new CanvasView(this);
+    this.strip = new LayerStrip(this);
+    this.canvas.stripSlot.appendChild(this.strip.el);
+    this.canvas.updateHint();
     if (panels.layers) this.layersPanel = new LayersPanel(this);
     if (panels.properties) this.propsPanel = new PropertiesPanel(this);
     this.root.appendChild(style);
@@ -597,6 +602,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   setFeatures(partial: Partial<EditorFeatures>): void {
     this.features = resolveFeatures({ ...this.features, ...partial });
     this.library?.refresh();
+    this.canvas.updateHint();
     this.refresh(false);
   }
 
@@ -613,6 +619,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   refresh(transient: boolean): void {
     this.canvas.render();
     if (transient) return;
+    this.canvas.stripSlot.style.display = this.features.layerStrip ? '' : 'none';
+    if (this.features.layerStrip) this.strip?.render();
     this.toolbar?.render();
     this.layersPanel?.render();
     this.propsPanel?.render();

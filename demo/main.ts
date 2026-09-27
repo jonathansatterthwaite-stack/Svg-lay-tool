@@ -28,6 +28,8 @@ themeSel.addEventListener('change', () => {
 // 3. Feature switches: colour mode and optional capabilities.
 const modeSel = document.getElementById('mode') as HTMLSelectElement;
 modeSel.addEventListener('change', () => editor.setFeatures({ colorMode: modeSel.value as 'full' | 'grayscale' | 'monochrome' }));
+const interactionSel = document.getElementById('interaction') as HTMLSelectElement;
+interactionSel.addEventListener('change', () => editor.setFeatures({ canvasInteraction: interactionSel.value as 'hold' | 'direct' }));
 for (const key of ['gradients', 'masks', 'groups', 'effects', 'strokes', 'blendModes'] as const) {
   const box = document.getElementById(`f-${key}`) as HTMLInputElement | null;
   box?.addEventListener('change', () => editor.setFeatures({ [key]: box.checked }));

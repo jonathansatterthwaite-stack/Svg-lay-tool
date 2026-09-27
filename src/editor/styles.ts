@@ -157,9 +157,29 @@ export const EDITOR_STYLES = `
 .slt-shape-btn svg { width: 100%; height: 100%; }
 .slt-empty { padding: 10px; color: var(--_slt-muted); }
 
-.slt-canvas { grid-area: canvas; position: relative; min-width: 0; min-height: 0; background: var(--_slt-canvas); outline: none; overflow: hidden; touch-action: none; }
+.slt-canvas { grid-area: canvas; position: relative; display: flex; min-width: 0; min-height: 0; background: var(--_slt-canvas); outline: none; overflow: hidden; touch-action: none; }
 .slt-canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--_slt-accent); }
+.slt-stage-wrap { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; }
 .slt-stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: default; }
+.slt-strip-slot { flex: none; display: flex; }
+.slt-strip { width: 56px; display: flex; flex-direction: column; background: var(--_slt-panel); border-right: 1px solid var(--_slt-border); min-height: 0; }
+.slt-strip-list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 5px; display: flex; flex-direction: column; gap: 6px; scrollbar-width: thin; }
+.slt-thumb { position: relative; flex: none; width: 44px; height: 44px; padding: 2px; border: 2px solid var(--_slt-border); border-radius: 6px; background: var(--_slt-input-bg); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.slt-thumb svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+.slt-thumb:hover { border-color: var(--_slt-muted); }
+.slt-thumb[data-selected] { border-color: var(--_slt-accent); box-shadow: 0 0 0 2px var(--_slt-selected); }
+.slt-thumb[data-hidden] svg { opacity: 0.3; }
+.slt-thumb[data-locked]::after { content: ""; position: absolute; inset: 0; border-radius: 4px; background: repeating-linear-gradient(45deg, transparent 0 4px, rgba(128,128,128,0.18) 4px 6px); pointer-events: none; }
+.slt-thumb-badge { position: absolute; left: 1px; top: 1px; display: inline-flex; color: var(--_slt-accent); }
+.slt-thumb-badge svg { width: 10px !important; height: 10px !important; }
+.slt-thumb-enter { position: absolute; right: -1px; bottom: -1px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px 0 4px 0; background: var(--_slt-accent); color: var(--_slt-accent-text); }
+.slt-thumb-enter svg { width: 11px !important; height: 11px !important; }
+.slt-strip-btn { flex: none; width: 44px; height: 28px; border: 1px solid var(--_slt-border); border-radius: 6px; background: var(--_slt-panel-2); color: var(--_slt-text); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.slt-strip-empty { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--_slt-muted); opacity: 0.5; }
+@media (pointer: coarse) { .slt-strip { width: 60px; } .slt-thumb { width: 48px; height: 48px; } .slt-strip-btn { width: 48px; height: 34px; } }
+.slt-root[data-layout="mobile"] .slt-strip { width: 52px; }
+.slt-root[data-layout="mobile"] .slt-thumb { width: 40px; height: 40px; }
+.slt-root[data-layout="mobile"] .slt-strip-btn { width: 40px; }
 .slt-stage.slt-panning { cursor: grab; }
 .slt-stage.slt-panning:active { cursor: grabbing; }
 .slt-stage [data-layer-id] { cursor: move; }
@@ -171,6 +191,10 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-hover-outline { fill: none; stroke: var(--_slt-accent); stroke-width: 1; opacity: 0.6; stroke-dasharray: 4 3; }
 .slt-overlay .slt-handle { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; }
 .slt-overlay .slt-handle-rotate { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; cursor: grab; }
+.slt-overlay .slt-handle-active { fill: var(--_slt-accent); stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 4px var(--_slt-accent)); }
+.slt-overlay .slt-lifted { stroke-width: 3; stroke-dasharray: none; filter: drop-shadow(0 0 6px var(--_slt-accent)); }
+.slt-overlay .slt-press-ring { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 2; opacity: 0; animation: slt-press 0.6s linear forwards; }
+@keyframes slt-press { from { opacity: 0; transform: none; } 30% { opacity: 0.6; } to { opacity: 1; } }
 .slt-overlay .slt-rotate-line { stroke: var(--_slt-accent); stroke-width: 1; }
 .slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; }
 .slt-overlay .slt-marquee { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 4 3; }

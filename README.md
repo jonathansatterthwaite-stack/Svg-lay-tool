@@ -312,20 +312,38 @@ Methods (all changes are undoable):
 - `store` — the underlying `DocumentStore` (`commit`, `beginTransaction`/`endTransaction`, history)
 - `destroy()`
 
+### Canvas interaction
+
+A thumbnail strip beside the canvas lists the layers at the current level
+(root, or the group the selection is in). Tap one to make it the selected
+layer; groups have a corner button to step inside, and an up arrow leads back
+out. Because selection happens there, the canvas itself can be forgiving:
+
+- **Hold mode** (default, `features.canvasInteraction: 'hold'`): dragging the
+  canvas pans. A short tap never changes the selection. Press and hold a layer
+  (600 ms, `features.holdDelay`) and it is picked up: it becomes selected,
+  the outline glows, and it follows your finger until released. Handles work
+  immediately and light up while pressed so you can see what is about to
+  resize or rotate.
+- **Direct mode** (`'direct'`): classic desktop behaviour where click selects,
+  drag moves and dragging on empty space draws a marquee.
+
+The strip can be hidden with `features.layerStrip: false`.
+
 ### Keyboard & mouse
 
 | action                        | input                                                  |
 | ----------------------------- | ------------------------------------------------------ |
-| select / add to selection     | click / Shift+click; drag on empty canvas for a marquee |
-| select inside a group         | double-click                                           |
-| move                          | drag (Shift constrains to an axis); arrow keys nudge   |
+| select / add to selection     | layer strip or Layers panel; in direct mode click / Shift+click, marquee on empty canvas |
+| select inside a group         | strip corner button, or double-click                   |
+| move                          | hold then drag (direct mode: drag); Shift constrains to an axis; arrow keys nudge |
 | resize                        | corner/edge handles (Shift keeps ratio, Alt from centre) |
 | rotate                        | round handle above the box (Shift snaps to 15°)        |
 | group / ungroup               | Ctrl+G / Ctrl+Shift+G                                  |
 | duplicate / delete            | Ctrl+D / Delete                                        |
 | reorder                       | `[` `]` (with Ctrl: to back / front); drag rows in the layer list |
 | undo / redo                   | Ctrl+Z / Ctrl+Y                                        |
-| pan / zoom                    | scroll or Space+drag / Ctrl+scroll, Ctrl+0 to fit       |
+| pan / zoom                    | drag (hold mode) or scroll or Space+drag / Ctrl+scroll or pinch, Ctrl+0 to fit |
 
 ## Mobile layout
 

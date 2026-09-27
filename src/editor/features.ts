@@ -36,6 +36,17 @@ export interface EditorFeatures {
   background: boolean;
   /** Restrict the shape library to these ids (undefined = all registered shapes). */
   shapes?: string[];
+  /** Show the thumbnail strip beside the canvas for switching layers. */
+  layerStrip: boolean;
+  /**
+   * How the canvas responds to pointers. `hold` (default): dragging pans the
+   * view and a press-and-hold on a layer picks it up to move it, so stray taps
+   * never change the selection. `direct`: click selects, drag moves, drag on
+   * empty space draws a marquee (classic desktop behaviour).
+   */
+  canvasInteraction: 'hold' | 'direct';
+  /** Milliseconds a press must last to pick a layer up in `hold` mode. */
+  holdDelay: number;
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -51,6 +62,9 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   export: true,
   canvasSize: true,
   background: true,
+  layerStrip: true,
+  canvasInteraction: 'hold',
+  holdDelay: 600,
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

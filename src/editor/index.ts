@@ -11,3 +11,4 @@ export {
   type ThemeName,
   type ThemeToken,
 } from './features';
+export { LayerStrip, soloDocument } from './layer-strip';

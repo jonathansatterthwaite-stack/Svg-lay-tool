@@ -58,6 +58,7 @@ type DragState =
   | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number }
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
+  | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> }
   | { kind: 'marquee'; startWorld: Point; currentWorld: Point; additive: boolean };
 
 let instanceCounter = 0;
@@ -65,7 +66,12 @@ let instanceCounter = 0;
 /** The interactive drawing surface. */
 export class CanvasView {
   readonly el: HTMLDivElement;
+  /** Host for the layer strip (filled by the editor). */
+  readonly stripSlot: HTMLDivElement;
+  private stageWrap: HTMLDivElement;
   private stage: SVGSVGElement;
+  private activeHandle: string | null = null;
+  private lifted = false;
   private staticDefs: SVGDefsElement;
   private docDefs: SVGDefsElement;
   private viewG: SVGGElement;
@@ -101,7 +107,9 @@ export class CanvasView {
     this.overlay = svgEl('g', { class: 'slt-overlay' });
     this.stage = svgEl('svg', { class: 'slt-stage' }, [this.staticDefs, this.docDefs, this.viewG, this.overlay]);
     this.hint = el('div', { class: 'slt-canvas-hint' }, ['Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan']);
-    this.el = el('div', { class: 'slt-canvas', tabindex: 0 }, [this.stage, this.hint]);
+    this.stripSlot = el('div', { class: 'slt-strip-slot' });
+    this.stageWrap = el('div', { class: 'slt-stage-wrap' }, [this.stage, this.hint]);
+    this.el = el('div', { class: 'slt-canvas', tabindex: 0 }, [this.stripSlot, this.stageWrap]);
 
     this.bind();
   }
@@ -136,7 +144,7 @@ export class CanvasView {
     on(window, 'blur', () => this.releaseSpace());
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.renderOverlay());
-      this.resizeObserver.observe(this.el);
+      this.resizeObserver.observe(this.stageWrap);
     }
   }
 
@@ -146,6 +154,7 @@ export class CanvasView {
   }
 
   destroy(): void {
+    if (this.drag?.kind === 'press') clearTimeout(this.drag.timer);
     for (const d of this.disposers) d();
     this.resizeObserver?.disconnect();
   }
@@ -173,13 +182,21 @@ export class CanvasView {
   }
 
   viewCentreWorld(): Point {
-    return this.screenToWorld({ x: this.el.clientWidth / 2, y: this.el.clientHeight / 2 });
+    return this.screenToWorld({ x: this.stageWrap.clientWidth / 2, y: this.stageWrap.clientHeight / 2 });
+  }
+
+  /** Update the hint text for the current interaction mode. */
+  updateHint(): void {
+    const hold = this.editor.features.canvasInteraction === 'hold';
+    this.hint.textContent = hold
+      ? 'Drag to pan · Ctrl+scroll or pinch to zoom · hold a layer to pick it up'
+      : 'Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan';
   }
 
   setZoom(zoom: number, aroundScreen?: Point): void {
     const z = Math.max(0.05, Math.min(32, zoom));
     const v = this.view;
-    const c = aroundScreen ?? { x: this.el.clientWidth / 2, y: this.el.clientHeight / 2 };
+    const c = aroundScreen ?? { x: this.stageWrap.clientWidth / 2, y: this.stageWrap.clientHeight / 2 };
     const f = z / v.zoom;
     v.panX = c.x - (c.x - v.panX) * f;
     v.panY = c.y - (c.y - v.panY) * f;
@@ -190,8 +207,8 @@ export class CanvasView {
 
   fitToView(): void {
     const doc = this.editor.document;
-    const w = this.el.clientWidth || 800;
-    const h = this.el.clientHeight || 600;
+    const w = this.stageWrap.clientWidth || 800;
+    const h = this.stageWrap.clientHeight || 600;
     const margin = 32;
     const zoom = Math.max(0.05, Math.min((w - margin * 2) / doc.width, (h - margin * 2) / doc.height));
     const v = this.view;
@@ -261,7 +278,12 @@ export class CanvasView {
     for (const id of ed.selection) {
       const f = this.screenFrame(id);
       if (!f) continue;
-      this.overlay.appendChild(svgEl('polygon', { class: 'slt-sel-outline', points: pts(rectCorners(f.box).map(f.toScreen)) }));
+      const cls = this.lifted && this.drag?.kind === 'move' ? 'slt-sel-outline slt-lifted' : 'slt-sel-outline';
+      this.overlay.appendChild(svgEl('polygon', { class: cls, points: pts(rectCorners(f.box).map(f.toScreen)) }));
+    }
+    if (this.drag?.kind === 'press') {
+      // Feedback while a hold is charging: ring around the press point.
+      this.overlay.appendChild(svgEl('circle', { class: 'slt-press-ring', cx: this.drag.startScreen.x, cy: this.drag.startScreen.y, r: this.coarse ? 26 : 16 }));
     }
 
     if (ed.selection.length === 1) {
@@ -297,12 +319,15 @@ export class CanvasView {
     for (const [name, dir] of Object.entries(HANDLES)) {
       const p = toScreen({ x: cx + (dir.hx * box.width) / 2, y: cy + (dir.hy * box.height) / 2 });
       const handleAngle = (Math.atan2(dir.hy, dir.hx) * 180) / Math.PI + frameAngle;
+      const active = this.activeHandle === name;
+      const sz = active ? size * 1.6 : size;
       const h = svgEl('rect', {
-        class: 'slt-handle',
-        x: p.x - size / 2,
-        y: p.y - size / 2,
-        width: size,
-        height: size,
+        class: active ? 'slt-handle slt-handle-active' : 'slt-handle',
+        x: p.x - sz / 2,
+        y: p.y - sz / 2,
+        width: sz,
+        height: sz,
+        rx: active ? 3 : 0,
         'data-handle': name,
         style: `cursor:${resizeCursor(handleAngle)}`,
       });
@@ -315,8 +340,10 @@ export class CanvasView {
     const reach = this.coarse ? 36 : 24;
     const rp = { x: top.x + up.x * reach, y: top.y + up.y * reach };
     this.overlay.appendChild(svgEl('line', { class: 'slt-rotate-line', x1: top.x, y1: top.y, x2: rp.x, y2: rp.y }));
+    const rotActive = this.activeHandle === 'rotate';
+    const rr = (this.coarse ? 11 : 5.5) * (rotActive ? 1.5 : 1);
     this.overlay.appendChild(
-      svgEl('circle', { class: 'slt-handle-rotate', cx: rp.x, cy: rp.y, r: this.coarse ? 11 : 5.5, 'data-handle': 'rotate' }),
+      svgEl('circle', { class: rotActive ? 'slt-handle-rotate slt-handle-active' : 'slt-handle-rotate', cx: rp.x, cy: rp.y, r: rr, 'data-handle': 'rotate' }),
     );
 
     if (layer.type === 'group') {
@@ -368,6 +395,9 @@ export class CanvasView {
       if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'scale' || this.drag.kind === 'rotate')) {
         this.editor.store.cancelTransaction();
       }
+      if (this.drag?.kind === 'press') clearTimeout(this.drag.timer);
+      this.activeHandle = null;
+      this.lifted = false;
       const [a, b] = [...this.pointers.values()];
       this.drag = {
         kind: 'pinch',
@@ -394,7 +424,13 @@ export class CanvasView {
 
     const handleEl = e.target instanceof Element ? e.target.closest('[data-handle]') : null;
     if (handleEl && this.editor.selection.length === 1) {
-      this.startHandleDrag(handleEl.getAttribute('data-handle')!, screen);
+      const name = handleEl.getAttribute('data-handle')!;
+      this.startHandleDrag(name, screen);
+      if (this.drag) {
+        // Light the handle up so the user can see what they are about to change.
+        this.activeHandle = name;
+        this.renderOverlay();
+      }
       this.stage.setPointerCapture(e.pointerId);
       e.preventDefault();
       return;
@@ -402,6 +438,15 @@ export class CanvasView {
 
     const additive = e.shiftKey || e.ctrlKey || e.metaKey;
     const deep = this.hitLayerId(e.target);
+    if (this.editor.features.canvasInteraction === 'hold') {
+      // Nothing happens until the hold completes; a drag before that pans the view.
+      const timer = setTimeout(() => this.completeHold(), this.editor.features.holdDelay);
+      this.drag = { kind: 'press', startScreen: screen, deepId: deep, timer };
+      this.stage.setPointerCapture(e.pointerId);
+      this.renderOverlay();
+      e.preventDefault();
+      return;
+    }
     if (deep) {
       const id = this.resolveHit(deep);
       if (additive) this.editor.toggleSelect(id);
@@ -414,6 +459,38 @@ export class CanvasView {
     }
     this.stage.setPointerCapture(e.pointerId);
     e.preventDefault();
+  }
+
+  /** The hold timer fired: select the pressed layer and pick it up. */
+  private completeHold(): void {
+    const d = this.drag;
+    if (!d || d.kind !== 'press') return;
+    if (!d.deepId) {
+      this.drag = null;
+      this.renderOverlay();
+      return;
+    }
+    const id = this.resolveHit(d.deepId);
+    const layer = findLayer(this.editor.document, id);
+    if (!layer || layer.locked) {
+      this.drag = null;
+      this.renderOverlay();
+      return;
+    }
+    if (!this.editor.selection.includes(id)) this.editor.select([id]);
+    this.drag = null;
+    this.startMoveDrag(d.startScreen);
+    if (this.drag) {
+      this.lifted = true;
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate(15);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    this.renderOverlay();
   }
 
   private startMoveDrag(screen: Point): void {
@@ -481,6 +558,15 @@ export class CanvasView {
       return;
     }
     switch (d.kind) {
+      case 'press': {
+        // Moved before the hold completed: this is a pan.
+        if (Math.hypot(screen.x - d.startScreen.x, screen.y - d.startScreen.y) > (this.coarse ? 10 : 5)) {
+          clearTimeout(d.timer);
+          this.drag = { kind: 'pan', startScreen: d.startScreen, startPan: { x: this.view.panX, y: this.view.panY } };
+          this.renderOverlay();
+        }
+        break;
+      }
       case 'pan': {
         this.view.panX = d.startPan.x + screen.x - d.startScreen.x;
         this.view.panY = d.startPan.y + screen.y - d.startScreen.y;
@@ -622,7 +708,14 @@ export class CanvasView {
       return;
     }
     this.drag = null;
+    this.activeHandle = null;
+    this.lifted = false;
     switch (d.kind) {
+      case 'press':
+        // A tap shorter than the hold: deliberately does nothing to the selection.
+        clearTimeout(d.timer);
+        this.renderOverlay();
+        break;
       case 'move':
       case 'scale':
       case 'rotate':
@@ -677,7 +770,7 @@ export class CanvasView {
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
     const screen = this.eventScreen(e);
-    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.el.clientHeight : 1;
+    const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.stageWrap.clientHeight : 1;
     if (e.ctrlKey || e.metaKey) {
       const factor = Math.exp(-e.deltaY * scale * 0.0015);
       this.setZoom(this.view.zoom * factor, screen);
