@@ -13,7 +13,7 @@ import {
 } from './matrix';
 import { EFFECT_DEFS } from './effects';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Effect, GroupLayer, Layer, MaskSettings, Rect, ShapeLayer, SvgDocument } from './types';
+import type { Effect, GroupLayer, Layer, Mat2, MaskSettings, Rect, ShapeLayer, SvgDocument } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -59,6 +59,7 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
     params: { ...defaultShapeParams(def), ...(init.params ?? {}) },
     width: 100,
     height: 100,
+    stretch: { ...IDENTITY2 },
     flipX: false,
     flipY: false,
     fill: { type: 'solid', color: '#e8e8e8' },
@@ -303,7 +304,7 @@ export function cloneLayer(layer: Layer): Layer {
   if (base.type === 'group') {
     return { ...base, children: base.children.map(cloneLayer) };
   }
-  return { ...base, params: { ...base.params }, fill: { ...base.fill }, stroke: base.stroke ? { ...base.stroke } : null };
+  return { ...base, params: { ...base.params }, stretch: { ...(base.stretch ?? IDENTITY2) }, fill: { ...base.fill }, stroke: base.stroke ? { ...base.stroke } : null };
 }
 
 /** Duplicate layers in place (each copy goes directly above its source). Returns new ids. */
@@ -333,47 +334,101 @@ function nextCopyName(name: string): string {
 // ---------------------------------------------------------------------------
 // Geometry
 
-/**
- * How a shape fills its box. A shape layer's `width`/`height` is its box in
- * the parent's axes; `rotation` turns the geometry inside that box and the
- * result is stretched to fill it. The geometry is generated at the "base"
- * size, which equals the box for rotations of 0° and 90° (so geometry such
- * as corner radii is exact there) and blends between them otherwise.
- */
-export interface ShapeGeometry {
-  /** Size the path is generated at (pre-rotation). */
-  baseWidth: number;
-  baseHeight: number;
-  /** Stretch applied after rotation so the rotated base fills width × height. */
-  scaleX: number;
-  scaleY: number;
+export const IDENTITY2: Mat2 = { a: 1, b: 0, c: 0, d: 1 };
+
+function mat2ToMat(m: Mat2): Mat {
+  return { a: m.a, b: m.b, c: m.c, d: m.d, e: 0, f: 0 };
 }
 
-export function shapeGeometry(layer: ShapeLayer): ShapeGeometry {
-  const r = (layer.rotation * Math.PI) / 180;
-  const c = Math.abs(Math.cos(r));
-  const s = Math.abs(Math.sin(r));
-  const baseWidth = layer.width * c + layer.height * s;
-  const baseHeight = layer.width * s + layer.height * c;
-  const bboxW = baseWidth * c + baseHeight * s;
-  const bboxH = baseWidth * s + baseHeight * c;
+function mul2(m1: Mat2, m2: Mat2): Mat2 {
   return {
-    baseWidth,
-    baseHeight,
-    scaleX: bboxW > 1e-9 ? layer.width / bboxW : 1,
-    scaleY: bboxH > 1e-9 ? layer.height / bboxH : 1,
+    a: m1.a * m2.a + m1.c * m2.b,
+    b: m1.b * m2.a + m1.d * m2.b,
+    c: m1.a * m2.c + m1.c * m2.d,
+    d: m1.b * m2.c + m1.d * m2.d,
+  };
+}
+
+function rot2(deg: number): Mat2 {
+  const r = (deg * Math.PI) / 180;
+  return { a: Math.cos(r), b: Math.sin(r), c: -Math.sin(r), d: Math.cos(r) };
+}
+
+export function isIdentity2(m: Mat2, eps = 1e-6): boolean {
+  return Math.abs(m.a - 1) < eps && Math.abs(m.b) < eps && Math.abs(m.c) < eps && Math.abs(m.d - 1) < eps;
+}
+
+/** The linear part of a shape's transform: stretch · rotation · flip. */
+export function shapeLinear(layer: ShapeLayer): Mat {
+  return compose(
+    mat2ToMat(layer.stretch ?? IDENTITY2),
+    rotate(layer.rotation),
+    scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1),
+  );
+}
+
+/** The shape's axis-aligned box in the parent, centred on its origin. */
+export function shapeBox(layer: ShapeLayer): Rect {
+  return transformRect({ x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height }, shapeLinear(layer));
+}
+
+/**
+ * Rotate a shape rigidly to `rotation` degrees: the picture turns, nothing
+ * stretches. The canvas-axis stretch is carried along by conjugation.
+ */
+export function rotateShape(layer: ShapeLayer, rotation: number): ShapeLayer {
+  const delta = rotation - layer.rotation;
+  if (delta === 0) return layer;
+  const K = layer.stretch ?? IDENTITY2;
+  const stretch = isIdentity2(K) ? K : mul2(mul2(rot2(delta), K), rot2(-delta));
+  return normalizeShape({ ...layer, rotation, stretch });
+}
+
+/** Scale a shape's box along the parent's axes by the given factors. */
+export function scaleShapeBox(layer: ShapeLayer, kx: number, ky: number): ShapeLayer {
+  const K = layer.stretch ?? IDENTITY2;
+  const stretch = mul2({ a: kx, b: 0, c: 0, d: ky }, K);
+  return normalizeShape({ ...layer, stretch });
+}
+
+/** Resize a shape's box to the given parent-axis dimensions. */
+export function setShapeBoxSize(layer: ShapeLayer, width: number, height: number): ShapeLayer {
+  const box = shapeBox(layer);
+  const kx = box.width > 1e-9 ? width / box.width : 1;
+  const ky = box.height > 1e-9 ? height / box.height : 1;
+  return scaleShapeBox(layer, kx, ky);
+}
+
+/**
+ * Fold a stretch back into the intrinsic size where that is exact: a uniform
+ * scale at any angle, or an axis-aligned stretch when the rotation is a
+ * multiple of 90°. Geometry (corner radii, strokes) is then regenerated at
+ * the new size instead of being stretched. Other cases are left alone.
+ */
+export function normalizeShape(layer: ShapeLayer): ShapeLayer {
+  const K = layer.stretch ?? IDENTITY2;
+  if (isIdentity2(K)) return layer.stretch ? layer : { ...layer, stretch: { ...IDENTITY2 } };
+  const eps = 1e-6;
+  if (Math.abs(K.b) > eps || Math.abs(K.c) > eps || K.a <= 0 || K.d <= 0) return layer;
+  if (Math.abs(K.a - K.d) < eps) {
+    // Uniform scale commutes with rotation: fold it at any angle.
+    return { ...layer, width: layer.width * K.a, height: layer.height * K.a, stretch: { ...IDENTITY2 } };
+  }
+  const r = ((layer.rotation % 360) + 360) % 360;
+  const quarter = Math.round(r / 90);
+  if (Math.abs(r - quarter * 90) > 1e-6) return layer;
+  const swap = quarter % 2 === 1;
+  return {
+    ...layer,
+    width: layer.width * (swap ? K.d : K.a),
+    height: layer.height * (swap ? K.a : K.d),
+    stretch: { ...IDENTITY2 },
   };
 }
 
 export function layerLocalMatrix(layer: Layer): Mat {
   if (layer.type === 'shape') {
-    const g = shapeGeometry(layer);
-    return compose(
-      translate(layer.x, layer.y),
-      scale(g.scaleX, g.scaleY),
-      rotate(layer.rotation),
-      scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1),
-    );
+    return multiply(translate(layer.x, layer.y), shapeLinear(layer));
   }
   return compose(translate(layer.x, layer.y), rotate(layer.rotation), scale(layer.scale, layer.scale));
 }
@@ -396,8 +451,7 @@ export function layerFrameRotation(layer: Layer): number {
 /** Bounds in the layer's own (pre-transform) coordinate system. */
 export function layerLocalBounds(layer: Layer): Rect | null {
   if (layer.type === 'shape') {
-    const g = shapeGeometry(layer);
-    return { x: -g.baseWidth / 2, y: -g.baseHeight / 2, width: g.baseWidth, height: g.baseHeight };
+    return { x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height };
   }
   return childrenBounds(layer.children);
 }
@@ -419,9 +473,7 @@ export function layerBoundsInParent(layer: Layer): Rect | null {
  * frame, scale/flip baked into the rectangle). Handles are drawn on this box.
  */
 export function layerFrameBounds(layer: Layer): Rect | null {
-  if (layer.type === 'shape') {
-    return { x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height };
-  }
+  if (layer.type === 'shape') return shapeBox(layer);
   const local = layerLocalBounds(layer);
   if (!local) return null;
   return transformRect(local, scale(layer.scale, layer.scale));
@@ -487,12 +539,7 @@ export function groupLayers(
   return { doc: out, groupId: group.id };
 }
 
-/**
- * Dissolve a group, keeping children where they appear. Returns the children's
- * ids. Exact for unrotated groups; a rotated group's rotation is folded into
- * each child's own rotation, which for shapes (whose box stays axis aligned)
- * is an approximation.
- */
+/** Dissolve a group, keeping children exactly where they appear. Returns the children's ids. */
 export function ungroupLayer(doc: SvgDocument, groupId: string): { doc: SvgDocument; ids: string[] } | null {
   const loc = locateLayer(doc, groupId);
   if (!loc || loc.layer.type !== 'group') return null;
@@ -500,11 +547,12 @@ export function ungroupLayer(doc: SvgDocument, groupId: string): { doc: SvgDocum
   const m = layerLocalMatrix(group);
   const children = group.children.map((child): Layer => {
     const p = applyToPoint(m, { x: child.x, y: child.y });
-    const base = { ...child, x: p.x, y: p.y, rotation: child.rotation + group.rotation };
-    if (base.type === 'shape') {
-      return { ...base, width: base.width * group.scale, height: base.height * group.scale };
+    if (child.type === 'shape') {
+      // Group linear part is s·R(g); rotate the shape rigidly then scale its box uniformly.
+      const rotated = rotateShape({ ...child, x: p.x, y: p.y }, child.rotation + group.rotation);
+      return scaleShapeBox(rotated, group.scale, group.scale);
     }
-    return { ...base, scale: base.scale * group.scale };
+    return { ...child, x: p.x, y: p.y, rotation: child.rotation + group.rotation, scale: child.scale * group.scale };
   });
   let out = removeLayers(doc, [groupId]);
   children.forEach((child, i) => {
@@ -613,11 +661,20 @@ function normalizeLayer(input: unknown): Layer | null {
     params,
     width: Math.max(0, num(raw.width, 100)),
     height: Math.max(0, num(raw.height, 100)),
+    stretch: parseMat2(raw.stretch),
     flipX: bool(raw.flipX, false),
     flipY: bool(raw.flipY, false),
     fill,
     stroke,
   };
+}
+
+function parseMat2(input: unknown): Mat2 {
+  if (!input || typeof input !== 'object') return { ...IDENTITY2 };
+  const r = input as Record<string, unknown>;
+  const n = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const m = { a: n(r.a, 1), b: n(r.b, 0), c: n(r.c, 0), d: n(r.d, 1) };
+  return Math.abs(m.a * m.d - m.b * m.c) < 1e-9 ? { ...IDENTITY2 } : m;
 }
 
 function normalizeEffect(input: unknown): Effect | null {

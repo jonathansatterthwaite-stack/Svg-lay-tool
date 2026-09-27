@@ -10,6 +10,9 @@ import {
   type Layer,
   type MaskMode,
   type ShapeLayer,
+  rotateShape,
+  setShapeBoxSize,
+  shapeBox,
   updateLayer,
 } from '../core';
 import { el } from './dom';
@@ -171,10 +174,11 @@ export class PropertiesPanel {
       ]),
     ];
     if (layer.type === 'shape') {
+      const box = shapeBox(layer);
       transformChildren.push(
         el('div', { class: 'slt-grid2' }, [
-          miniField('W', numberInput(layer.width, (v) => patch<ShapeLayer>({ width: Math.max(0, v) }), { min: 0 })),
-          miniField('H', numberInput(layer.height, (v) => patch<ShapeLayer>({ height: Math.max(0, v) }), { min: 0 })),
+          miniField('W', numberInput(box.width, (v) => apply<ShapeLayer>((l) => setShapeBoxSize(l, Math.max(1, v), shapeBox(l).height), true), { min: 1 })),
+          miniField('H', numberInput(box.height, (v) => apply<ShapeLayer>((l) => setShapeBoxSize(l, shapeBox(l).width, Math.max(1, v)), true), { min: 1 })),
         ]),
       );
     } else {
@@ -183,7 +187,10 @@ export class PropertiesPanel {
       );
     }
     transformChildren.push(
-      row('Rotation', slider(layer.rotation, (v, c) => patch({ rotation: v }, c), { min: -180, max: 180, step: 1 })),
+      row(
+        'Rotation',
+        slider(layer.rotation, (v, c) => apply((l) => (l.type === 'shape' ? rotateShape(l, v) : { ...l, rotation: v }), c), { min: -180, max: 180, step: 1 }),
+      ),
     );
     if (layer.type === 'shape') {
       transformChildren.push(

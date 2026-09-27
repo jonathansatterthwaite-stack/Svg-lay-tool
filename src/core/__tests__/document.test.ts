@@ -14,12 +14,15 @@ import {
   normalizeDocument,
   removeLayers,
   reorderLayers,
-  shapeGeometry,
+  rotateShape,
+  scaleShapeBox,
+  setShapeBoxSize,
+  shapeBox,
   ungroupLayer,
   updateLayer,
 } from '../document';
 import { applyToPoint } from '../matrix';
-import type { GroupLayer } from '../types';
+import type { GroupLayer, ShapeLayer } from '../types';
 
 function sample() {
   const a = createShapeLayer({ name: 'A', x: 100, y: 100, width: 50, height: 50 });
@@ -55,8 +58,8 @@ describe('document ops', () => {
     expect(group.children.map((l) => l.id)).toEqual([a.id, b.id]);
     // group sits where the top member was (index 1), c stays on top
     expect(res.doc.layers.map((l) => l.id)).toEqual([res.groupId, c.id]);
-    // origin at the selection centre (shape boxes are axis aligned regardless of rotation)
-    expect(group.x).toBeCloseTo((75 + 225) / 2, 5);
+    // origin at the selection centre (b is rotated 45°, so its box is its diagonal)
+    expect(group.x).toBeCloseTo((75 + 200 + 25 * Math.SQRT2) / 2, 5);
     for (const [i, l] of [a, b].entries()) {
       const wb = layerWorldBounds(res.doc, l.id)!;
       expect(wb.x).toBeCloseTo(before[i].x, 6);
@@ -83,43 +86,75 @@ describe('document ops', () => {
     const bAfter = findLayer(un.doc, b.id)!;
     expect(bAfter.type === 'shape' && bAfter.width).toBeCloseTo(75, 6);
     expect(bAfter.rotation).toBeCloseTo(45, 6);
-    // A rotated group folds its rotation into the children and keeps their centres.
-    const rotated = updateLayer<GroupLayer>(res.doc, res.groupId, { rotation: 30 });
-    const centreBefore = applyToPoint(layerWorldMatrix(rotated, a.id), { x: 0, y: 0 });
+    // A rotated + scaled group ungroups exactly too (rigid rotation keeps every point).
+    const rotated = updateLayer<GroupLayer>(res.doc, res.groupId, { rotation: 30, scale: 1.5 });
     const un2 = ungroupLayer(rotated, res.groupId)!;
-    const aAfter = findLayer(un2.doc, a.id)!;
-    expect(aAfter.rotation).toBeCloseTo(30, 6);
-    const centreAfter = applyToPoint(layerWorldMatrix(un2.doc, a.id), { x: 0, y: 0 });
-    expect(centreAfter.x).toBeCloseTo(centreBefore.x, 6);
-    expect(centreAfter.y).toBeCloseTo(centreBefore.y, 6);
+    for (const l of [a, b]) {
+      const before = layerWorldMatrix(rotated, l.id);
+      const after = layerWorldMatrix(un2.doc, l.id);
+      // The group's uniform scale is folded into the child's intrinsic size, so the same
+      // geometric point is at 1.5× the local coordinates afterwards.
+      const k = (findLayer(un2.doc, l.id) as ShapeLayer).width / (findLayer(rotated, l.id) as ShapeLayer).width;
+      expect(k).toBeCloseTo(1.5, 6);
+      for (const q of [{ x: 0, y: 0 }, { x: 25, y: -25 }, { x: -10, y: 20 }]) {
+        const p0 = applyToPoint(before, q);
+        const p1 = applyToPoint(after, { x: q.x * k, y: q.y * k });
+        expect(p1.x).toBeCloseTo(p0.x, 6);
+        expect(p1.y).toBeCloseTo(p0.y, 6);
+      }
+    }
+    expect(findLayer(un2.doc, a.id)!.rotation).toBeCloseTo(30, 6);
   });
 
-  it('shape boxes stay in canvas axes while rotation turns the content inside', () => {
-    const square = createShapeLayer({ x: 100, y: 100, width: 100, height: 100, rotation: 45 });
-    // world bounds are the box itself, not the rotated square's diagonal
-    let doc = insertLayer(createDocument(), square);
-    expect(layerWorldBounds(doc, square.id)).toEqual({ x: 50, y: 50, width: 100, height: 100 });
-    const g = shapeGeometry(square);
-    expect(g.baseWidth).toBeCloseTo(100 * Math.SQRT2, 6); // rotated diagonal fills the box
-    expect(g.scaleX).toBeCloseTo(0.5, 6);
-    expect(g.scaleY).toBeCloseTo(0.5, 6);
-    // at 0° and 90° geometry is generated at the box size with no stretch
-    const r0 = shapeGeometry({ ...square, rotation: 0, width: 200, height: 50 });
-    expect([r0.baseWidth, r0.baseHeight, r0.scaleX, r0.scaleY]).toEqual([200, 50, 1, 1]);
-    const r90 = shapeGeometry({ ...square, rotation: 90, width: 200, height: 50 });
-    expect(r90.baseWidth).toBeCloseTo(50, 9);
-    expect(r90.baseHeight).toBeCloseTo(200, 9);
-    expect(r90.scaleX).toBeCloseTo(1, 9);
-    expect(r90.scaleY).toBeCloseTo(1, 9);
-    // a wide box with rotated content: the rotated base is stretched to fit, and the corners map to the box
-    const wide = createShapeLayer({ x: 0, y: 0, width: 300, height: 100, rotation: 45 });
-    doc = insertLayer(createDocument(), wide);
-    expect(layerWorldBounds(doc, wide.id)).toEqual({ x: -150, y: -50, width: 300, height: 100 });
-    const m = layerWorldMatrix(doc, wide.id);
-    const gw = shapeGeometry(wide);
-    const corner = applyToPoint(m, { x: gw.baseWidth / 2, y: -gw.baseHeight / 2 });
-    expect(Math.abs(corner.x)).toBeLessThanOrEqual(150 + 1e-9);
-    expect(Math.abs(corner.y)).toBeLessThanOrEqual(50 + 1e-9);
+  it('rotating a shape is rigid; its box is recomputed from the turned geometry', () => {
+    const wide = createShapeLayer({ x: 0, y: 0, width: 300, height: 100 });
+    const turned = rotateShape(wide, 45);
+    expect(turned.width).toBe(300); // intrinsic size untouched
+    expect(turned.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    const box = shapeBox(turned);
+    const d = (300 + 100) / Math.SQRT2;
+    expect(box.width).toBeCloseTo(d, 6);
+    expect(box.height).toBeCloseTo(d, 6);
+    // a corner of the geometry lands where a rigid rotation puts it
+    const m = layerWorldMatrix(insertLayer(createDocument(), turned), turned.id);
+    const p = applyToPoint(m, { x: 150, y: 0 });
+    expect(p.x).toBeCloseTo(150 / Math.SQRT2, 6);
+    expect(p.y).toBeCloseTo(150 / Math.SQRT2, 6);
+  });
+
+  it('scaling a rotated shape stretches along the canvas axes and survives further rotation', () => {
+    const sq = rotateShape(createShapeLayer({ width: 100, height: 100 }), 45);
+    const wideDiamond = scaleShapeBox(sq, 2, 1);
+    let box = shapeBox(wideDiamond);
+    expect(box.width).toBeCloseTo(200 * Math.SQRT2, 6);
+    expect(box.height).toBeCloseTo(100 * Math.SQRT2, 6);
+    // the far right point of the diamond moved out to 2x, the top point stayed
+    const m = layerWorldMatrix(insertLayer(createDocument(), wideDiamond), wideDiamond.id);
+    const right = applyToPoint(m, { x: 50, y: -50 }); // the corner that sits at +x after 45°
+    expect(right.x).toBeCloseTo(100 * Math.SQRT2, 6);
+    expect(right.y).toBeCloseTo(0, 6);
+    // rotate the wide diamond by 90°: rigid, so its box swaps dimensions
+    const turned = rotateShape(wideDiamond, 135);
+    box = shapeBox(turned);
+    expect(box.width).toBeCloseTo(100 * Math.SQRT2, 6);
+    expect(box.height).toBeCloseTo(200 * Math.SQRT2, 6);
+    // setting the box size directly
+    const sized = setShapeBoxSize(turned, 70, 140);
+    expect(shapeBox(sized).width).toBeCloseTo(70, 6);
+    expect(shapeBox(sized).height).toBeCloseTo(140, 6);
+  });
+
+  it('axis-aligned stretch at 0° / 90° folds back into the intrinsic size', () => {
+    const rect = createShapeLayer({ width: 100, height: 50 });
+    const wider = setShapeBoxSize(rect, 300, 50);
+    expect(wider.width).toBe(300);
+    expect(wider.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    const turned = rotateShape(rect, 90);
+    expect(shapeBox(turned)).toEqual(expect.objectContaining({ width: expect.closeTo(50, 6), height: expect.closeTo(100, 6) }));
+    const stretched = setShapeBoxSize(turned, 50, 400); // canvas-axis: taller
+    expect(stretched.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    expect(stretched.width).toBeCloseTo(400, 6); // intrinsic width is what points up at 90°
+    expect(stretched.height).toBeCloseTo(50, 6);
   });
 
   it('refuses to group layers from different parents', () => {

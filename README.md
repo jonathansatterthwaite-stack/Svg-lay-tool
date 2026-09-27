@@ -119,11 +119,14 @@ and an optional `mask`.
 - **Shape layers** reference a shape from the library by id, with `width`,
   `height`, `flipX`/`flipY`, shape `params` (corner radius, star points …), a
   `fill` (solid, linear or radial gradient, or none) and an optional `stroke`.
-  The origin is the centre of the shape. `width` × `height` is the layer's box
-  in the parent's axes; `rotation` turns the geometry *inside* that box and
-  stretches it to fill, so resizing a rotated shape still works along the
-  canvas axes (a square rotated 45° and widened becomes a wide diamond). At
-  0° and 90° the geometry is generated at the exact box size.
+  The origin is the centre of the shape. `width` × `height` is the size the
+  geometry is generated at; `rotation` turns it rigidly, and `stretch` is a
+  canvas-axis stretch applied afterwards. Rotating never distorts a shape,
+  while resizing works along the canvas axes even when rotated (a square
+  rotated 45° and widened becomes a wide diamond, which then keeps that look
+  if rotated again). Use `rotateShape()`, `scaleShapeBox()` and
+  `setShapeBoxSize()` rather than editing these fields by hand; an
+  axis-aligned stretch at 0° or 90° is folded back into `width`/`height`.
 - **Group layers** hold `children` and a uniform `scale`. Children are
   positioned relative to the group's origin. When you group a selection the
   origin is placed at the selection's centre so rotation and scaling behave
@@ -358,7 +361,7 @@ editing aids. `editor.setPreview(true)` does the same; it emits
 | select inside a group         | strip corner button, or expand the group in the Layers panel |
 | move                          | hold then drag (direct mode: drag); Shift constrains to an axis; arrow keys nudge |
 | resize                        | corner/edge handles (Shift keeps ratio, Alt from centre) |
-| rotate                        | round handle above the box (Shift snaps to 15°)        |
+| rotate                        | handle on the ring around the shape (Shift snaps to 15°); the box is hidden while turning and recalculated on release |
 | group / ungroup               | Ctrl+G / Ctrl+Shift+G                                  |
 | duplicate / delete            | Ctrl+D / Delete                                        |
 | reorder                       | `[` `]` (with Ctrl: to back / front); drag rows in the layer list |

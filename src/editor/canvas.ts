@@ -6,6 +6,8 @@ import {
   layerFrameBounds,
   layerFrameMatrix,
   layerFrameRotation,
+  rotateShape,
+  scaleShapeBox,
   layerWorldBounds,
   locateLayer,
   multiply,
@@ -18,6 +20,7 @@ import {
   vnodeToDom,
   type GroupLayer,
   type Layer,
+  type ShapeLayer,
   type Mat,
   type Point,
   type Rect,
@@ -278,7 +281,9 @@ export class CanvasView {
       if (f) this.overlay.appendChild(svgEl('polygon', { class: 'slt-hover-outline', points: pts(rectCorners(f.box).map(f.toScreen)) }));
     }
 
+    const rotating = this.drag?.kind === 'rotate';
     for (const id of ed.selection) {
+      if (rotating) break; // the box is meaningless mid-rotation; it is recalculated on release
       const f = this.screenFrame(id);
       if (!f) continue;
       const cls = this.lifted && this.drag?.kind === 'move' ? 'slt-sel-outline slt-lifted' : 'slt-sel-outline';
@@ -305,6 +310,32 @@ export class CanvasView {
     const o = toScreen({ x: cx, y: cy });
     const ax = toScreen({ x: cx + 1, y: cy });
     const frameAngle = (Math.atan2(ax.y - o.y, ax.x - o.x) * 180) / Math.PI;
+    const rotating = this.drag?.kind === 'rotate';
+
+    // Rotation ring: independent of the box, centred on the pivot, handle at the current angle.
+    const pivot = toScreen(layer.type === 'shape' ? { x: 0, y: 0 } : { x: 0, y: 0 });
+    const corners = rectCorners(box).map(toScreen);
+    const reach = Math.max(...corners.map((c) => Math.hypot(c.x - pivot.x, c.y - pivot.y)));
+    const ringR = reach + (this.coarse ? 28 : 18);
+    const rotActive = this.activeHandle === 'rotate';
+    const rotDeg = layer.type === 'shape' ? layer.rotation : 0; // group boxes already turn with the group
+    const worldAngle = (rotDeg - 90) * (Math.PI / 180) + (frameAngle * Math.PI) / 180;
+    const hp = { x: pivot.x + Math.cos(worldAngle) * ringR, y: pivot.y + Math.sin(worldAngle) * ringR };
+    this.overlay.appendChild(svgEl('circle', { class: rotating ? 'slt-rotate-ring slt-rotate-ring-active' : 'slt-rotate-ring', cx: pivot.x, cy: pivot.y, r: ringR }));
+    if (rotating) {
+      // zero mark and a spoke to the handle while turning
+      const zero = { x: pivot.x + Math.cos((frameAngle - 90) * (Math.PI / 180)) * ringR, y: pivot.y + Math.sin((frameAngle - 90) * (Math.PI / 180)) * ringR };
+      this.overlay.appendChild(svgEl('line', { class: 'slt-rotate-line', x1: zero.x, y1: zero.y, x2: zero.x + (zero.x - pivot.x) * 0.06, y2: zero.y + (zero.y - pivot.y) * 0.06 }));
+      this.overlay.appendChild(svgEl('line', { class: 'slt-rotate-line', x1: pivot.x, y1: pivot.y, x2: hp.x, y2: hp.y }));
+      this.overlay.appendChild(svgEl('circle', { class: 'slt-pivot', cx: pivot.x, cy: pivot.y, r: 3 }));
+      const label = svgEl('text', { class: 'slt-rotate-label', x: pivot.x, y: pivot.y - ringR - 10, 'text-anchor': 'middle' }, [`${Math.round(rotDeg)}°`]);
+      this.overlay.appendChild(label);
+    }
+    const rr = (this.coarse ? 11 : 6) * (rotActive ? 1.4 : 1);
+    this.overlay.appendChild(
+      svgEl('circle', { class: rotActive ? 'slt-handle-rotate slt-handle-active' : 'slt-handle-rotate', cx: hp.x, cy: hp.y, r: rr, 'data-handle': 'rotate' }),
+    );
+    if (rotating) return; // no scale handles while rotating
 
     for (const [name, dir] of Object.entries(HANDLES)) {
       const p = toScreen({ x: cx + (dir.hx * box.width) / 2, y: cy + (dir.hy * box.height) / 2 });
@@ -323,18 +354,6 @@ export class CanvasView {
       });
       this.overlay.appendChild(h);
     }
-
-    // Rotation handle above the top edge (in screen space along the frame's up direction).
-    const top = toScreen({ x: cx, y: box.y });
-    const up = normalize({ x: top.x - o.x, y: top.y - o.y }) ?? { x: 0, y: -1 };
-    const reach = this.coarse ? 36 : 24;
-    const rp = { x: top.x + up.x * reach, y: top.y + up.y * reach };
-    this.overlay.appendChild(svgEl('line', { class: 'slt-rotate-line', x1: top.x, y1: top.y, x2: rp.x, y2: rp.y }));
-    const rotActive = this.activeHandle === 'rotate';
-    const rr = (this.coarse ? 11 : 5.5) * (rotActive ? 1.5 : 1);
-    this.overlay.appendChild(
-      svgEl('circle', { class: rotActive ? 'slt-handle-rotate slt-handle-active' : 'slt-handle-rotate', cx: rp.x, cy: rp.y, r: rr, 'data-handle': 'rotate' }),
-    );
 
     if (layer.type === 'group') {
       const piv = toScreen({ x: 0, y: 0 });
@@ -581,7 +600,9 @@ export class CanvasView {
         let rotation = d.layer.rotation + ((angle - d.startAngle) * 180) / Math.PI;
         if (e.shiftKey) rotation = Math.round(rotation / 15) * 15;
         rotation = Math.round((((rotation % 360) + 360) % 360) * 10) / 10;
-        this.editor.store.update(updateLayer(d.origDoc, d.id, { rotation }));
+        this.editor.store.update(
+          updateLayer(d.origDoc, d.id, (l) => (l.type === 'shape' ? rotateShape(l, rotation) : { ...l, rotation })),
+        );
         break;
       }
     }
@@ -638,13 +659,14 @@ export class CanvasView {
       h = Math.max(1, h);
       const newCentre = { x: (Math.min(nl, nr) + Math.max(nl, nr)) / 2, y: (Math.min(nt, nb) + Math.max(nt, nb)) / 2 };
       const shift = applyToVector(rotate(layerFrameRotation(layer)), { x: newCentre.x - centre.x, y: newCentre.y - centre.y });
+      const kx = frame.width > 1e-9 ? w / frame.width : 1;
+      const ky = frame.height > 1e-9 ? h / frame.height : 1;
       this.editor.store.update(
-        updateLayer(d.origDoc, d.id, {
-          width: round(w),
-          height: round(h),
+        updateLayer<ShapeLayer>(d.origDoc, d.id, (l) => ({
+          ...scaleShapeBox(l, kx, ky),
           x: round(layer.x + shift.x),
           y: round(layer.y + shift.y),
-        }),
+        })),
       );
       return;
     }

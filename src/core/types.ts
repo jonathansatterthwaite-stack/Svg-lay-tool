@@ -140,15 +140,33 @@ export interface LayerBase {
   mask: MaskSettings | null;
 }
 
+/** 2×2 linear map (no translation): [a c; b d]. */
+export interface Mat2 {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+}
+
 export interface ShapeLayer extends LayerBase {
   type: 'shape';
   /** Id of a shape in the shape library. */
   shape: string;
   /** Shape specific parameters (corner radius, star points ...). */
   params: Record<string, number>;
-  /** Size in parent units before rotation. The origin is the shape centre. */
+  /**
+   * Intrinsic size the geometry is generated at. The origin is the shape
+   * centre. The visible box in the parent is `stretch · rotate(rotation)`
+   * applied to this rectangle.
+   */
   width: number;
   height: number;
+  /**
+   * Canvas-axis stretch applied after rotation. Resizing a rotated shape along
+   * the canvas axes ends up here; rotating a shape keeps its look by
+   * conjugating this matrix. Identity for an unstretched shape.
+   */
+  stretch: Mat2;
   flipX: boolean;
   flipY: boolean;
   fill: Fill;

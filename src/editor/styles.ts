@@ -196,6 +196,9 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-press-ring { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 2; opacity: 0; animation: slt-press 0.6s linear forwards; }
 @keyframes slt-press { from { opacity: 0; transform: none; } 30% { opacity: 0.6; } to { opacity: 1; } }
 .slt-overlay .slt-rotate-line { stroke: var(--_slt-accent); stroke-width: 1; }
+.slt-overlay .slt-rotate-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.55; }
+.slt-overlay .slt-rotate-ring-active { stroke-dasharray: none; opacity: 0.9; }
+.slt-overlay .slt-rotate-label { fill: var(--_slt-text); font: 600 12px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; }
 .slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; }
 .slt-overlay .slt-marquee { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .slt-canvas-hint { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--_slt-muted); pointer-events: none; }

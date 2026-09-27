@@ -1,6 +1,6 @@
 import { recolor, toGray } from './color';
 import { buildFilter, effectSpill, effectsForColorMode } from './effects';
-import { childrenBounds, layerLocalBounds, layerLocalMatrix, shapeGeometry } from './document';
+import { childrenBounds, isIdentity2, layerLocalBounds, layerLocalMatrix } from './document';
 import { expandRect, fmt, invert, type Mat, multiply, IDENTITY, transformRect } from './matrix';
 import { getShape, shapePath } from './shapes';
 import type { ColorMode, Effect, Fill, Layer, Rect, ShapeLayer, SvgDocument } from './types';
@@ -305,8 +305,8 @@ function transformString(layer: Layer): string | undefined {
   const parts: string[] = [];
   if (layer.x !== 0 || layer.y !== 0) parts.push(`translate(${fmt(layer.x)} ${fmt(layer.y)})`);
   if (layer.type === 'shape') {
-    const g = shapeGeometry(layer);
-    if (Math.abs(g.scaleX - 1) > 1e-6 || Math.abs(g.scaleY - 1) > 1e-6) parts.push(`scale(${fmt(g.scaleX)} ${fmt(g.scaleY)})`);
+    const k = layer.stretch;
+    if (k && !isIdentity2(k)) parts.push(`matrix(${fmt(k.a)} ${fmt(k.b)} ${fmt(k.c)} ${fmt(k.d)} 0 0)`);
     if (layer.rotation !== 0) parts.push(`rotate(${fmt(layer.rotation)})`);
     if (layer.flipX || layer.flipY) parts.push(`scale(${layer.flipX ? -1 : 1} ${layer.flipY ? -1 : 1})`);
   } else {
@@ -351,8 +351,7 @@ function renderShape(
   override?: PaintOverride,
 ): VNode {
   const def = getShape(layer.shape);
-  const g = shapeGeometry(layer);
-  const d = shapePath(layer.shape, g.baseWidth, g.baseHeight, layer.params);
+  const d = shapePath(layer.shape, layer.width, layer.height, layer.params);
   attrs.d = d;
   if (def.fillRule === 'evenodd') attrs['fill-rule'] = 'evenodd';
 
