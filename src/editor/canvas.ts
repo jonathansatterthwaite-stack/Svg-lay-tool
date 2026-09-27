@@ -58,8 +58,7 @@ type DragState =
   | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number }
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
-  | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> }
-  | { kind: 'marquee'; startWorld: Point; currentWorld: Point; additive: boolean };
+  | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> };
 
 let instanceCounter = 0;
 
@@ -128,7 +127,6 @@ export class CanvasView {
     on(this.stage, 'pointermove', (e) => this.onPointerMove(e));
     on(this.stage, 'pointerup', (e) => this.onPointerUp(e));
     on(this.stage, 'pointercancel', (e) => this.onPointerUp(e));
-    on(this.stage, 'dblclick', (e) => this.onDoubleClick(e));
     on(this.stage, 'wheel', (e) => this.onWheel(e), { passive: false });
     on(this.stage, 'pointerleave', () => this.editor.setHover(null));
     on(this.el, 'keydown', (e) => {
@@ -246,7 +244,10 @@ export class CanvasView {
       r.setAttribute('height', String(doc.height));
     }
 
-    const { defs, body } = renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.canvasRenderOptions() });
+    const { defs, body } = this.editor.preview
+      ? renderDocumentParts(doc, { idPrefix: this.idPrefix, ...this.editor.renderOptions() })
+      : renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.canvasRenderOptions() });
+    this.stage.classList.toggle('slt-preview', this.editor.preview);
     clear(this.docDefs);
     for (const d of defs) this.docDefs.appendChild(vnodeToDom(d));
     clear(this.docG);
@@ -268,6 +269,7 @@ export class CanvasView {
   renderOverlay(): void {
     clear(this.overlay);
     const ed = this.editor;
+    if (ed.preview) return;
     const pts = (corners: Point[]) => corners.map((p) => `${p.x},${p.y}`).join(' ');
 
     if (ed.hoverId && !ed.selection.includes(ed.hoverId) && !this.drag) {
@@ -291,19 +293,6 @@ export class CanvasView {
       if (f && !f.layer.locked) this.renderHandles(f);
     }
 
-    if (this.drag?.kind === 'marquee') {
-      const a = this.worldToScreen(this.drag.startWorld);
-      const b = this.worldToScreen(this.drag.currentWorld);
-      this.overlay.appendChild(
-        svgEl('rect', {
-          class: 'slt-marquee',
-          x: Math.min(a.x, b.x),
-          y: Math.min(a.y, b.y),
-          width: Math.abs(a.x - b.x),
-          height: Math.abs(a.y - b.y),
-        }),
-      );
-    }
   }
 
   private renderHandles(f: { toScreen: (p: Point) => Point; box: Rect; layer: Layer }): void {
@@ -365,23 +354,20 @@ export class CanvasView {
   }
 
   /**
-   * Decide which layer a click on `deepId` selects: normally the root-level
-   * ancestor, unless the user is already working inside that group.
+   * The canvas never changes the selection: a hit only counts when it lands on
+   * a selected layer (or inside a selected group), in which case that selected
+   * layer is what gets moved.
    */
-  private resolveHit(deepId: string): string {
+  private resolveHit(deepId: string): string | null {
     const doc = this.editor.document;
     const loc = locateLayer(doc, deepId);
-    if (!loc) return deepId;
+    if (!loc) return null;
     const chain = [...loc.ancestors.map((a) => a.id), deepId];
     const selected = this.editor.selection;
     for (let i = chain.length - 1; i >= 0; i--) {
       if (selected.includes(chain[i])) return chain[i];
     }
-    for (let i = chain.length - 1; i >= 1; i--) {
-      const parentId = chain[i - 1];
-      if (selected.some((s) => locateLayer(doc, s)?.parent?.id === parentId)) return chain[i];
-    }
-    return chain[0];
+    return null;
   }
 
   // -------------------------------------------------------------------------
@@ -436,9 +422,9 @@ export class CanvasView {
       return;
     }
 
-    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-    const deep = this.hitLayerId(e.target);
-    if (this.editor.features.canvasInteraction === 'hold') {
+    const deep = this.editor.preview ? null : this.hitLayerId(e.target);
+    const hit = deep ? this.resolveHit(deep) : null;
+    if (hit && this.editor.features.canvasInteraction === 'hold') {
       // Nothing happens until the hold completes; a drag before that pans the view.
       const timer = setTimeout(() => this.completeHold(), this.editor.features.holdDelay);
       this.drag = { kind: 'press', startScreen: screen, deepId: deep, timer };
@@ -447,15 +433,12 @@ export class CanvasView {
       e.preventDefault();
       return;
     }
-    if (deep) {
-      const id = this.resolveHit(deep);
-      if (additive) this.editor.toggleSelect(id);
-      else if (!this.editor.selection.includes(id)) this.editor.select([id]);
+    if (hit) {
+      // direct mode: move the selected layer straight away
       this.startMoveDrag(screen);
-    } else {
-      if (!additive) this.editor.clearSelection();
-      const w = this.screenToWorld(screen);
-      this.drag = { kind: 'marquee', startWorld: w, currentWorld: w, additive };
+    }
+    if (!this.drag) {
+      this.drag = { kind: 'pan', startScreen: screen, startPan: { x: this.view.panX, y: this.view.panY } };
     }
     this.stage.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -471,13 +454,12 @@ export class CanvasView {
       return;
     }
     const id = this.resolveHit(d.deepId);
-    const layer = findLayer(this.editor.document, id);
-    if (!layer || layer.locked) {
+    const layer = id ? findLayer(this.editor.document, id) : null;
+    if (!id || !layer || layer.locked) {
       this.drag = null;
       this.renderOverlay();
       return;
     }
-    if (!this.editor.selection.includes(id)) this.editor.select([id]);
     this.drag = null;
     this.startMoveDrag(d.startScreen);
     if (this.drag) {
@@ -601,11 +583,6 @@ export class CanvasView {
         this.editor.store.update(updateLayer(d.origDoc, d.id, { rotation }));
         break;
       }
-      case 'marquee': {
-        d.currentWorld = this.screenToWorld(screen);
-        this.renderOverlay();
-        break;
-      }
     }
   }
 
@@ -721,50 +698,9 @@ export class CanvasView {
       case 'rotate':
         this.editor.store.endTransaction();
         break;
-      case 'marquee': {
-        const a = d.startWorld;
-        const b = d.currentWorld;
-        const rect: Rect = {
-          x: Math.min(a.x, b.x),
-          y: Math.min(a.y, b.y),
-          width: Math.abs(a.x - b.x),
-          height: Math.abs(a.y - b.y),
-        };
-        if (rect.width * this.view.zoom > 3 || rect.height * this.view.zoom > 3) {
-          const doc = this.editor.document;
-          const ids = doc.layers
-            .filter((l) => l.visible && !l.locked)
-            .filter((l) => {
-              const wb = layerWorldBounds(doc, l.id);
-              return wb && rectsIntersect(wb, rect);
-            })
-            .map((l) => l.id);
-          this.editor.select(ids, d.additive);
-        }
-        this.renderOverlay();
-        break;
-      }
       default:
         break;
     }
-  }
-
-  private onDoubleClick(e: MouseEvent): void {
-    // The first click re-renders the drawing, so `e.target` may be a detached
-    // node; hit-test by position instead.
-    const root = this.editor.root;
-    const under = root instanceof ShadowRoot ? root.elementFromPoint(e.clientX, e.clientY) : document.elementFromPoint(e.clientX, e.clientY);
-    const deep = this.hitLayerId(under);
-    if (!deep) return;
-    // Drill one level into the group under the pointer.
-    const doc = this.editor.document;
-    const loc = locateLayer(doc, deep);
-    if (!loc) return;
-    const chain = [...loc.ancestors.map((a) => a.id), deep];
-    const current = this.editor.selection[0];
-    const idx = current ? chain.indexOf(current) : -1;
-    const next = chain[Math.min(chain.length - 1, idx + 1)];
-    this.editor.select([next]);
   }
 
   private onWheel(e: WheelEvent): void {

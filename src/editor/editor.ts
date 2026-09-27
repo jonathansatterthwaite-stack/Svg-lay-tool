@@ -90,6 +90,7 @@ export interface EditorEvents extends Record<string, unknown[]> {
   change: [doc: SvgDocument];
   selectionchange: [ids: string[]];
   viewchange: [view: ViewState];
+  previewchange: [on: boolean];
 }
 
 /**
@@ -107,6 +108,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   selection: string[] = [];
   hoverId: string | null = null;
+  /** When true the canvas shows the exact output: no handles, ghosts or editing aids. */
+  preview = false;
   view: ViewState = { zoom: 1, panX: 0, panY: 0 };
 
   private rootEl: HTMLElement;
@@ -612,10 +615,18 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     return f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
   }
 
+  /** Toggle the exact-output preview on the canvas. */
+  setPreview(on: boolean): void {
+    if (this.preview === on) return;
+    this.preview = on;
+    this.refresh(false);
+    this.emit('previewchange', on);
+  }
+
   /** Extra, editor-only render options for the canvas (never applied to exports). */
   canvasRenderOptions(): RenderOptions {
     const f = this.features;
-    const out: RenderOptions = { ...this.renderOptions(), maskPreviewOpacity: f.maskPreview ? 0.25 : 0 };
+    const out: RenderOptions = { ...this.renderOptions(), maskPreviewOpacity: f.maskPreview ? 0.25 : 0, activeIds: this.selection };
     if (f.colorMode === 'monochrome' && f.highlightSelection && this.selection.length) {
       out.highlightIds = this.selection;
       out.highlightColor = this.contrastColor(f.monoColor);

@@ -202,6 +202,15 @@ export const EDITOR_STYLES = `
 
 .slt-side { grid-area: side; display: flex; flex-direction: column; min-height: 0; background: var(--_slt-panel); border-left: 1px solid var(--_slt-border); }
 .slt-layers { display: flex; flex-direction: column; flex: 0 0 42%; min-height: 120px; border-bottom: 1px solid var(--_slt-border); }
+.slt-panel-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 8px; }
+.slt-preview-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--_slt-muted); cursor: pointer; }
+.slt-preview-toggle input { appearance: none; -webkit-appearance: none; width: 30px; height: 16px; margin: 0; border-radius: 8px; background: var(--_slt-border); position: relative; cursor: pointer; transition: background 0.15s; }
+.slt-preview-toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.slt-preview-toggle input:checked { background: var(--_slt-accent); }
+.slt-preview-toggle input:checked::after { left: 16px; }
+.slt-layers.slt-previewing .slt-preview-toggle { color: var(--_slt-accent); }
+.slt-stage.slt-preview .slt-doc-frame { stroke: var(--_slt-accent); }
+.slt-stage.slt-preview [data-layer-id] { cursor: default; }
 .slt-layers-list { flex: 1; overflow: auto; padding: 2px 4px 8px; }
 .slt-layer-row { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 0; border-radius: 4px; cursor: pointer; position: relative; }
 .slt-layer-row:hover { background: var(--_slt-hover); }

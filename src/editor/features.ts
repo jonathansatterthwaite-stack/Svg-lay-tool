@@ -39,10 +39,11 @@ export interface EditorFeatures {
   /** Show the thumbnail strip beside the canvas for switching layers. */
   layerStrip: boolean;
   /**
-   * How the canvas responds to pointers. `hold` (default): dragging pans the
-   * view and a press-and-hold on a layer picks it up to move it, so stray taps
-   * never change the selection. `direct`: click selects, drag moves, drag on
-   * empty space draws a marquee (classic desktop behaviour).
+   * How the canvas moves the selected layer. Selection itself only ever
+   * changes from the layer strip or the Layers panel, never from the canvas.
+   * `hold` (default): dragging pans the view; press-and-hold on the selected
+   * layer picks it up to move it. `direct`: dragging the selected layer moves
+   * it straight away; dragging anywhere else pans.
    */
   canvasInteraction: 'hold' | 'direct';
   /** Milliseconds a press must last to pick a layer up in `hold` mode. */

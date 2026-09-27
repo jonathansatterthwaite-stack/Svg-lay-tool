@@ -59,6 +59,28 @@ describe('renderer', () => {
     expect(find(renderDocument(doc), (n) => n.attrs['data-mask-preview'] !== undefined)).toHaveLength(0);
   });
 
+  it('activeIds make only those layers (and their children) take pointer events', () => {
+    let doc = createDocument();
+    const a = createShapeLayer({ name: 'a', fill: { type: 'none' } });
+    const b = createShapeLayer({ name: 'b' });
+    const locked = createShapeLayer({ name: 'locked', locked: true });
+    doc = insertLayer(doc, a);
+    doc = insertLayer(doc, b);
+    doc = insertLayer(doc, locked);
+    const g = groupLayers(doc, [a.id, b.id])!;
+    const tree = renderDocument(g.doc, { interactive: true, activeIds: [g.groupId] });
+    const pe = (id: string) => find(tree, (n) => n.attrs['data-layer-id'] === id)[0].attrs['pointer-events'];
+    expect(pe(g.groupId)).toBe('all');
+    expect(pe(a.id)).toBe('all'); // transparent child of the selected group is grabbable
+    expect(pe(locked.id)).toBe('none');
+    const other = renderDocument(g.doc, { interactive: true, activeIds: [locked.id] });
+    expect(find(other, (n) => n.attrs['data-layer-id'] === locked.id)[0].attrs['pointer-events']).toBe('none'); // locked never grabbable
+    expect(find(other, (n) => n.attrs['data-layer-id'] === b.id)[0].attrs['pointer-events']).toBe('none');
+    // without activeIds nothing is touched; exports never carry it
+    expect(find(renderDocument(g.doc, { interactive: true }), (n) => n.attrs['pointer-events'] !== undefined)).toHaveLength(0);
+    expect(renderDocumentToString(g.doc, { activeIds: [a.id] })).not.toContain('pointer-events');
+  });
+
   it('highlights selected layers in monochrome mode only', () => {
     let doc = createDocument();
     const a = createShapeLayer({ name: 'a', fill: { type: 'solid', color: '#ff0000' } });

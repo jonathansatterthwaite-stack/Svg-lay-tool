@@ -17,9 +17,21 @@ export class LayersPanel {
   private renaming: string | null = null;
   private dragId: string | null = null;
 
+  private previewToggle: HTMLInputElement;
+
   constructor(private editor: SvgLayEditor) {
     this.list = el('div', { class: 'slt-layers-list' });
-    this.el = el('div', { class: 'slt-layers' }, [el('div', { class: 'slt-panel-title' }, ['Layers']), this.list]);
+    this.previewToggle = el('input', { type: 'checkbox', role: 'switch' });
+    this.previewToggle.addEventListener('change', () => this.editor.setPreview(this.previewToggle.checked));
+    const previewRow = el('label', { class: 'slt-preview-toggle', title: 'Show the image exactly as it will be produced' }, [
+      icon('eye'),
+      el('span', { class: 'slt-grow' }, ['Preview']),
+      this.previewToggle,
+    ]);
+    this.el = el('div', { class: 'slt-layers' }, [
+      el('div', { class: 'slt-panel-title slt-panel-title-row' }, [el('span', {}, ['Layers']), previewRow]),
+      this.list,
+    ]);
     this.list.addEventListener('dragover', (e) => {
       // Allow dropping at the very bottom of the list (below everything).
       if (this.dragId && e.target === this.list) e.preventDefault();
@@ -34,6 +46,8 @@ export class LayersPanel {
   }
 
   render(): void {
+    this.previewToggle.checked = this.editor.preview;
+    this.el.classList.toggle('slt-previewing', this.editor.preview);
     const active = this.editor.root instanceof ShadowRoot ? this.editor.root.activeElement : document.activeElement;
     if (this.renaming && active && this.list.contains(active)) return;
     this.list.replaceChildren();

@@ -327,23 +327,31 @@ A thumbnail strip beside the canvas lists the layers at the current level
 layer; groups have a corner button to step inside, and an up arrow leads back
 out. Because selection happens there, the canvas itself can be forgiving:
 
-- **Hold mode** (default, `features.canvasInteraction: 'hold'`): dragging the
-  canvas pans. A short tap never changes the selection. Press and hold a layer
-  (600 ms, `features.holdDelay`) and it is picked up: it becomes selected,
-  the outline glows, and it follows your finger until released. Handles work
-  immediately and light up while pressed so you can see what is about to
-  resize or rotate.
-- **Direct mode** (`'direct'`): classic desktop behaviour where click selects,
-  drag moves and dragging on empty space draws a marquee.
+The canvas never changes the selection: selection happens only in the strip
+or the Layers panel. The selected layer is the one thing the canvas can move,
+and it can be grabbed anywhere inside its box even when it is transparent,
+unfilled or hidden behind other layers, because unselected layers ignore the
+pointer.
 
-The strip can be hidden with `features.layerStrip: false`.
+- **Hold mode** (default, `features.canvasInteraction: 'hold'`): dragging the
+  canvas pans. Press and hold the selected layer (600 ms, `features.holdDelay`)
+  and it is picked up: the outline glows and it follows your finger until
+  released. Handles work immediately and light up while pressed so you can see
+  what is about to resize or rotate.
+- **Direct mode** (`'direct'`): dragging the selected layer moves it straight
+  away; dragging anywhere else pans.
+
+A **Preview** switch at the top of the Layers panel (and Layers tab on mobile)
+shows the image exactly as it will be produced: no handles, mask ghosts or
+editing aids. `editor.setPreview(true)` does the same; it emits
+`previewchange`. The strip can be hidden with `features.layerStrip: false`.
 
 ### Keyboard & mouse
 
 | action                        | input                                                  |
 | ----------------------------- | ------------------------------------------------------ |
-| select / add to selection     | layer strip or Layers panel; in direct mode click / Shift+click, marquee on empty canvas |
-| select inside a group         | strip corner button, or double-click                   |
+| select / add to selection     | layer strip or Layers panel (Shift+click adds); never from the canvas |
+| select inside a group         | strip corner button, or expand the group in the Layers panel |
 | move                          | hold then drag (direct mode: drag); Shift constrains to an axis; arrow keys nudge |
 | resize                        | corner/edge handles (Shift keeps ratio, Alt from centre) |
 | rotate                        | round handle above the box (Shift snaps to 15°)        |

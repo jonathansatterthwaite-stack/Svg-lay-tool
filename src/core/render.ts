@@ -34,6 +34,12 @@ export interface RenderOptions {
    * mask can be seen. 0 disables. Default 0.25 when interactive.
    */
   maskPreviewOpacity?: number;
+  /**
+   * Editor aid (interactive only): layers that may be grabbed on the canvas.
+   * They receive `pointer-events: all` so transparent or unfilled shapes can
+   * still be picked up; every other layer gets `pointer-events: none`.
+   */
+  activeIds?: Iterable<string>;
 }
 
 /** Paint overrides used when drawing a layer as mask content or as an editor ghost. */
@@ -56,6 +62,9 @@ interface Ctx {
   highlight: Set<string>;
   highlightColor: string;
   maskPreview: number;
+  active: Set<string> | null;
+  /** Depth inside an active layer's subtree (children inherit grabbability). */
+  activeDepth: number;
 }
 
 /** Apply the colour mode to a single paint colour. */
@@ -105,6 +114,8 @@ export function renderDocumentParts(doc: SvgDocument, opts: RenderOptions = {}):
     highlight: new Set(opts.highlightIds ?? []),
     highlightColor: opts.highlightColor ?? '#4da3ff',
     maskPreview: opts.interactive ? opts.maskPreviewOpacity ?? 0.25 : 0,
+    active: opts.interactive && opts.activeIds ? new Set(opts.activeIds) : null,
+    activeDepth: 0,
   };
   const body: VNode[] = [];
   if (doc.background && opts.background !== false) {
@@ -226,6 +237,16 @@ function markClone(node: VNode): void {
 }
 
 function renderLayer(layer: Layer, ctx: Ctx, override?: PaintOverride): VNode {
+  const isActive = ctx.active?.has(layer.id) ?? false;
+  if (isActive) ctx.activeDepth++;
+  try {
+    return renderLayerColored(layer, ctx, override);
+  } finally {
+    if (isActive) ctx.activeDepth--;
+  }
+}
+
+function renderLayerColored(layer: Layer, ctx: Ctx, override?: PaintOverride): VNode {
   if (!override && ctx.colorMode === 'monochrome' && ctx.highlight.has(layer.id) && ctx.monoColor !== ctx.highlightColor) {
     const prev = ctx.monoColor;
     ctx.monoColor = ctx.highlightColor;
@@ -257,6 +278,11 @@ function renderLayerInner(layer: Layer, ctx: Ctx, override?: PaintOverride): VNo
     attrs['data-layer-type'] = layer.type;
     if (layer.locked) attrs['data-locked'] = '';
     if (override?.ghost) attrs['data-ghost'] = '';
+    if (ctx.active) {
+      // Only grabbable layers take pointer events; they do so over their whole box even when transparent.
+      attrs['pointer-events'] = ctx.activeDepth > 0 && !layer.locked ? 'all' : 'none';
+      if (ctx.activeDepth > 0) attrs['data-active'] = '';
+    }
   }
   if (styles.length) attrs.style = styles.join(';');
 
@@ -307,7 +333,7 @@ function applyOverrideDeep(node: VNode, override: PaintOverride): VNode {
 }
 
 function applyGhost(node: VNode): void {
-  node.attrs['pointer-events'] = 'stroke';
+  if (node.attrs['pointer-events'] !== 'all') node.attrs['pointer-events'] = 'stroke';
   node.attrs['stroke-width'] = 1;
   node.attrs['stroke-dasharray'] = '4 3';
   node.attrs['vector-effect'] = 'non-scaling-stroke';
