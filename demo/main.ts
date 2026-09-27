@@ -25,12 +25,25 @@ themeSel.addEventListener('change', () => {
   localStorage.setItem('slt-theme', themeSel.value);
 });
 
+// 4. Device simulation: resize the host; the editor's auto layout follows its own width.
+const stage = document.getElementById('stage')!;
+const deviceSel = document.getElementById('device') as HTMLSelectElement;
+const applyDevice = () => {
+  if (deviceSel.value === 'desktop') delete stage.dataset.device;
+  else stage.dataset.device = deviceSel.value;
+  localStorage.setItem('slt-device', deviceSel.value);
+  requestAnimationFrame(() => editor.fitToView());
+};
+deviceSel.value = localStorage.getItem('slt-device') ?? 'desktop';
+deviceSel.addEventListener('change', applyDevice);
+applyDevice();
+
 // 3. Feature switches: colour mode and optional capabilities.
 const modeSel = document.getElementById('mode') as HTMLSelectElement;
 modeSel.addEventListener('change', () => editor.setFeatures({ colorMode: modeSel.value as 'full' | 'grayscale' | 'monochrome' }));
 const interactionSel = document.getElementById('interaction') as HTMLSelectElement;
 interactionSel.addEventListener('change', () => editor.setFeatures({ canvasInteraction: interactionSel.value as 'hold' | 'direct' }));
-for (const key of ['gradients', 'masks', 'groups', 'effects', 'strokes', 'blendModes'] as const) {
+for (const key of ['layerStrip', 'gradients', 'masks', 'groups', 'effects', 'strokes', 'blendModes'] as const) {
   const box = document.getElementById(`f-${key}`) as HTMLInputElement | null;
   box?.addEventListener('change', () => editor.setFeatures({ [key]: box.checked }));
 }

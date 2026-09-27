@@ -7,50 +7,66 @@
     <style>
       html, body { margin: 0; height: 100%; background: #0f1013; color: #e6e8ee; font-family: system-ui, sans-serif; }
       body { display: flex; flex-direction: column; }
-      header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #2e323b; background: #15171c; }
-      header h1 { font-size: 14px; margin: 0; font-weight: 600; }
-      header span { color: #8a90a0; font-size: 12px; }
+      header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; border-bottom: 1px solid #2e323b; background: #15171c; }
+      header h1 { font-size: 14px; margin: 0 4px 0 0; font-weight: 600; }
+      header .desc { color: #8a90a0; font-size: 12px; flex: 1 1 auto; }
+      header .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; width: 100%; }
+      header .group { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 0; border-right: 1px solid #2e323b; }
+      header .group:last-child { border-right: 0; }
+      header .group > b { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #8a90a0; }
       header button, header select { background: #23262e; color: inherit; border: 1px solid #2e323b; border-radius: 6px; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 12px; }
-      header label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #8a90a0; }
+      header label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #c9cdd6; }
       header input[type="color"] { width: 26px; height: 24px; padding: 0; border: 1px solid #2e323b; border-radius: 6px; background: none; }
-      header .controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-      header .flags { display: flex; gap: 6px; }
-      header .flags label { gap: 2px; }
+      header a { color: #8a90a0; font-size: 12px; margin-left: auto; }
+      #stage { flex: 1; min-height: 0; display: flex; align-items: stretch; justify-content: center; background: #0f1013; overflow: auto; }
       #editor { flex: 1; min-height: 0; }
+      /* Device simulation: the editor's own width drives its layout, so a phone-sized frame gives the mobile UI. */
+      #stage[data-device="phone"], #stage[data-device="phone-landscape"], #stage[data-device="tablet"] { padding: 16px; align-items: center; background: radial-gradient(circle at 50% 30%, #1b1e26, #0f1013 70%); }
+      #stage[data-device] #editor { flex: none; border: 10px solid #2a2d35; border-radius: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); overflow: hidden; }
+      #stage[data-device="phone"] #editor { width: 390px; height: 800px; }
+      #stage[data-device="phone-landscape"] #editor { width: 800px; height: 390px; }
+      #stage[data-device="tablet"] #editor { width: 820px; height: 1000px; border-radius: 22px; max-height: calc(100vh - 140px); }
+      .note { font-size: 11px; color: #8a90a0; }
       @media (max-width: 700px) {
-        header { padding: 6px 8px; gap: 6px; }
-        header > span, header .flags { display: none; }
-        header .controls { gap: 6px; }
+        header { padding: 6px 8px; }
+        header .desc, header .flags, header .note { display: none; }
+        header .group { border-right: 0; padding-right: 0; }
+        #stage[data-device] { padding: 0; }
+        #stage[data-device] #editor { width: 100% !important; height: 100% !important; border: 0; border-radius: 0; flex: 1; }
       }
     </style>
   </head>
   <body>
     <header>
       <h1>svg-lay-tool</h1>
-      <span>Layer-based shape editor demo · everything below is the embeddable component</span>
-      <div class="controls">
-        <label title="Set as --slt-accent on the page; the editor picks it up">Accent <input id="accent" type="color" value="#4da3ff" /></label>
-        <label>Theme
-          <select id="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select>
-        </label>
-        <label>Colours
-          <select id="mode"><option value="full">Full colour</option><option value="grayscale">Grayscale</option><option value="monochrome">Monochrome</option></select>
-        </label>
-        <label>Canvas
-          <select id="interaction"><option value="hold">Hold to pick up</option><option value="direct">Click to select</option></select>
-        </label>
-        <span class="flags">
-          <label><input id="f-gradients" type="checkbox" checked />Gradients</label>
-          <label><input id="f-strokes" type="checkbox" checked />Strokes</label>
-          <label><input id="f-effects" type="checkbox" checked />Effects</label>
-          <label><input id="f-masks" type="checkbox" checked />Masks</label>
-          <label><input id="f-groups" type="checkbox" checked />Groups</label>
-          <label><input id="f-blendModes" type="checkbox" checked />Blend</label>
+      <span class="desc">Layer-based shape editor · everything inside the frame is the embeddable component</span>
+      <a href="https://github.com/jonathansatterthwaite-stack/Svg-lay-tool">GitHub</a>
+      <div class="row">
+        <span class="group"><b>Device</b>
+          <select id="device"><option value="desktop">Desktop (fills page)</option><option value="phone">Phone</option><option value="phone-landscape">Phone landscape</option><option value="tablet">Tablet</option></select>
+          <span class="note">Hold a layer with the mouse to pick it up, as a finger would.</span>
         </span>
-        <button id="reset" type="button">Reset sample</button>
-        <a href="https://github.com/jonathansatterthwaite-stack/Svg-lay-tool" style="color:#8a90a0;font-size:12px">GitHub</a>
+        <span class="group"><b>Theme</b>
+          <label title="Set as --slt-accent on the page; the editor picks it up">Accent <input id="accent" type="color" value="#4da3ff" /></label>
+          <select id="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select>
+        </span>
+        <span class="group"><b>Features</b>
+          <select id="mode"><option value="full">Full colour</option><option value="grayscale">Grayscale</option><option value="monochrome">Monochrome</option></select>
+          <select id="interaction"><option value="hold">Hold to pick up</option><option value="direct">Click to select</option></select>
+          <span class="flags">
+            <label><input id="f-layerStrip" type="checkbox" checked />Layer strip</label>
+            <label><input id="f-gradients" type="checkbox" checked />Gradients</label>
+            <label><input id="f-strokes" type="checkbox" checked />Strokes</label>
+            <label><input id="f-effects" type="checkbox" checked />Effects</label>
+            <label><input id="f-masks" type="checkbox" checked />Masks</label>
+            <label><input id="f-groups" type="checkbox" checked />Groups</label>
+            <label><input id="f-blendModes" type="checkbox" checked />Blend</label>
+          </span>
+        </span>
+        <span class="group"><button id="reset" type="button">Reset sample</button></span>
       </div>
     </header>
+    <div id="stage">
     <div id="editor">
       <div id="fallback" style="padding: 24px; max-width: 640px; line-height: 1.5; color: #c9cdd6">
         <p><strong>Loading the editor…</strong></p>
@@ -61,6 +77,7 @@
           repository root as a static site, does not work because the page needs to be built first.
         </p>
       </div>
+    </div>
     </div>
     <script>
       // Surface script errors on the page instead of a blank screen.
