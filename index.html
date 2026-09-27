@@ -23,7 +23,24 @@
       <button id="theme" type="button">Toggle theme</button>
       <button id="reset" type="button">Reset sample</button>
     </header>
-    <div id="editor"></div>
+    <div id="editor">
+      <div id="fallback" style="padding: 24px; max-width: 640px; line-height: 1.5; color: #c9cdd6">
+        <p><strong>Loading the editor…</strong></p>
+        <p id="fallback-msg" style="color: #8a90a0; font-size: 13px">
+          If this message stays, the demo script could not be loaded. Serve the demo with
+          <code>npm run dev</code>, or build it with <code>npm run build:demo</code> and serve the
+          <code>dist-demo</code> folder. Opening <code>index.html</code> straight from disk, or serving the
+          repository root as a static site, does not work because the page needs to be built first.
+        </p>
+      </div>
+    </div>
+    <script>
+      // Surface script errors on the page instead of a blank screen.
+      window.addEventListener('error', (e) => {
+        const msg = document.getElementById('fallback-msg');
+        if (msg) msg.textContent = 'The demo failed to start: ' + (e.message || 'script could not be loaded') + '. Open the browser console for details.';
+      });
+    </script>
     <script type="module" src="/demo/main.ts"></script>
   </body>
 </html>

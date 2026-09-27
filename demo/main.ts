@@ -4,6 +4,7 @@ import { sampleDocument } from './sample';
 defineSvgLayEditor();
 
 const host = document.getElementById('editor')!;
+host.replaceChildren(); // remove the loading/fallback message
 const editor = new SvgLayEditor(host, {
   document: sampleDocument(),
   theme: (localStorage.getItem('slt-theme') as 'dark' | 'light' | null) ?? 'dark',

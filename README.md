@@ -265,7 +265,11 @@ npm run build:demo # static demo site in dist-demo/ (what GitHub Pages serves)
 
 The demo is published to GitHub Pages by `.github/workflows/pages.yml` on every
 push to `main`. Enable it once under the repository's Settings → Pages by setting
-the source to "GitHub Actions".
+the source to **GitHub Actions** (not "Deploy from a branch": the repository
+root holds unbuilt source, so serving it directly shows only the page header).
+
+To run the built demo locally without Vite: `npm run build:demo`, then
+`npm run preview:demo` (or serve the `dist-demo` folder with any static server).
 
 Project layout:
 
