@@ -9,6 +9,8 @@ flipped. Any layer can act as a **mask** that clips, or applies effects to, the
 layers below it. Layers can be **grouped** and moved, scaled and rotated
 together. Everything renders to clean SVG and exports to SVG, PNG or JSON.
 
+**Live demo:** https://jonathansatterthwaite-stack.github.io/Svg-lay-tool/
+
 ![svg-lay-tool editor](docs/screenshot.png)
 
 - Zero runtime dependencies, ~22 kB gzipped for the full editor.
@@ -258,7 +260,12 @@ npm run dev        # demo at http://localhost:5173
 npm test           # vitest unit tests for the core
 npm run typecheck
 npm run build      # dist/svg-lay-tool.js (ESM), dist/core.js, dist/svg-lay-tool.iife.js, dist/types
+npm run build:demo # static demo site in dist-demo/ (what GitHub Pages serves)
 ```
+
+The demo is published to GitHub Pages by `.github/workflows/pages.yml` on every
+push to `main`. Enable it once under the repository's Settings → Pages by setting
+the source to "GitHub Actions".
 
 Project layout:
 

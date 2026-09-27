@@ -10,7 +10,7 @@
       header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #2e323b; background: #15171c; }
       header h1 { font-size: 14px; margin: 0; font-weight: 600; }
       header span { color: #8a90a0; font-size: 12px; }
-      header button { margin-left: auto; background: #23262e; color: inherit; border: 1px solid #2e323b; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+      header button { margin-left: 0; background: #23262e; color: inherit; border: 1px solid #2e323b; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
       header button + button { margin-left: 0; }
       #editor { flex: 1; min-height: 0; }
     </style>
@@ -19,6 +19,7 @@
     <header>
       <h1>svg-lay-tool</h1>
       <span>Layer-based shape editor demo · everything below is the embeddable component</span>
+      <a href="https://github.com/jonathansatterthwaite-stack/Svg-lay-tool" style="margin-left:auto;color:#8a90a0;font-size:12px">GitHub</a>
       <button id="theme" type="button">Toggle theme</button>
       <button id="reset" type="button">Reset sample</button>
     </header>

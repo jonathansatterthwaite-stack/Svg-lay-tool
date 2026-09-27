@@ -15,5 +15,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "demo", "vite.config.ts", "vite.iife.config.ts"]
+  "include": ["src", "demo", "vite.config.ts", "vite.iife.config.ts", "vite.demo.config.ts"]
 }
