@@ -57,6 +57,7 @@ type DragState =
     }
   | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number }
   | { kind: 'pan'; startScreen: Point; startPan: Point }
+  | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
   | { kind: 'marquee'; startWorld: Point; currentWorld: Point; additive: boolean };
 
 let instanceCounter = 0;
@@ -76,6 +77,8 @@ export class CanvasView {
   private overlay: SVGGElement;
   private hint: HTMLDivElement;
   private drag: DragState | null = null;
+  private pointers = new Map<number, Point>();
+  private coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private spaceDown = false;
   private resizeObserver: ResizeObserver | null = null;
   private readonly idPrefix: string;
@@ -283,7 +286,7 @@ export class CanvasView {
 
   private renderHandles(f: { toScreen: (p: Point) => Point; box: Rect; layer: Layer }): void {
     const { box, toScreen, layer } = f;
-    const size = 8;
+    const size = this.coarse ? 16 : 8;
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     // Screen angle of the frame's x axis, used to pick resize cursors.
@@ -309,9 +312,12 @@ export class CanvasView {
     // Rotation handle above the top edge (in screen space along the frame's up direction).
     const top = toScreen({ x: cx, y: box.y });
     const up = normalize({ x: top.x - o.x, y: top.y - o.y }) ?? { x: 0, y: -1 };
-    const rp = { x: top.x + up.x * 24, y: top.y + up.y * 24 };
+    const reach = this.coarse ? 36 : 24;
+    const rp = { x: top.x + up.x * reach, y: top.y + up.y * reach };
     this.overlay.appendChild(svgEl('line', { class: 'slt-rotate-line', x1: top.x, y1: top.y, x2: rp.x, y2: rp.y }));
-    this.overlay.appendChild(svgEl('circle', { class: 'slt-handle-rotate', cx: rp.x, cy: rp.y, r: 5.5, 'data-handle': 'rotate' }));
+    this.overlay.appendChild(
+      svgEl('circle', { class: 'slt-handle-rotate', cx: rp.x, cy: rp.y, r: this.coarse ? 11 : 5.5, 'data-handle': 'rotate' }),
+    );
 
     if (layer.type === 'group') {
       const piv = toScreen({ x: 0, y: 0 });
@@ -355,8 +361,27 @@ export class CanvasView {
   // Pointer interaction
 
   private onPointerDown(e: PointerEvent): void {
-    if (this.drag) return;
     const screen = this.eventScreen(e);
+    this.pointers.set(e.pointerId, screen);
+    if (this.pointers.size === 2) {
+      // Second finger: abandon whatever single-finger gesture was in progress and pinch instead.
+      if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'scale' || this.drag.kind === 'rotate')) {
+        this.editor.store.cancelTransaction();
+      }
+      const [a, b] = [...this.pointers.values()];
+      this.drag = {
+        kind: 'pinch',
+        startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        startZoom: this.view.zoom,
+        startPan: { x: this.view.panX, y: this.view.panY },
+        startMid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      };
+      this.stage.setPointerCapture(e.pointerId);
+      this.renderOverlay();
+      e.preventDefault();
+      return;
+    }
+    if (this.drag) return;
     this.el.focus({ preventScroll: true });
 
     if (e.button === 1 || (e.button === 0 && this.spaceDown)) {
@@ -433,7 +458,23 @@ export class CanvasView {
 
   private onPointerMove(e: PointerEvent): void {
     const screen = this.eventScreen(e);
+    if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, screen);
     const d = this.drag;
+    if (d?.kind === 'pinch') {
+      if (this.pointers.size < 2) return;
+      const [a, b] = [...this.pointers.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const zoom = Math.max(0.05, Math.min(32, d.startZoom * (dist / d.startDist)));
+      const f = zoom / d.startZoom;
+      // Keep the world point under the initial midpoint anchored, then follow the midpoint.
+      this.view.zoom = zoom;
+      this.view.panX = d.startMid.x - (d.startMid.x - d.startPan.x) * f + (mid.x - d.startMid.x);
+      this.view.panY = d.startMid.y - (d.startMid.y - d.startPan.y) * f + (mid.y - d.startMid.y);
+      this.render();
+      this.editor.viewChanged();
+      return;
+    }
     if (!d) {
       const deep = this.hitLayerId(e.target);
       this.editor.setHover(deep ? this.resolveHit(deep) : null);
@@ -572,10 +613,15 @@ export class CanvasView {
   }
 
   private onPointerUp(e: PointerEvent): void {
+    this.pointers.delete(e.pointerId);
+    if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
     const d = this.drag;
     if (!d) return;
+    if (d.kind === 'pinch') {
+      if (this.pointers.size === 0) this.drag = null;
+      return;
+    }
     this.drag = null;
-    if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
     switch (d.kind) {
       case 'move':
       case 'scale':

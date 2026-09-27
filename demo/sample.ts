@@ -11,7 +11,8 @@ import {
 export function sampleDocument(): SvgDocument {
   const backplate = createShapeLayer({
     name: 'Backplate',
-    shape: 'hexagon',
+    shape: 'polygon',
+    params: { sides: 6, radius: 6 },
     x: 256,
     y: 256,
     width: 400,
@@ -30,7 +31,8 @@ export function sampleDocument(): SvgDocument {
       ...[-70, 0, 70].map((y, i) =>
         createShapeLayer({
           name: `Stripe ${i + 1}`,
-          shape: 'rect',
+          shape: 'polygon',
+          params: { sides: 4 },
           x: 0,
           y,
           width: 420,
@@ -41,7 +43,8 @@ export function sampleDocument(): SvgDocument {
       ),
       createShapeLayer({
         name: 'Stripe clip',
-        shape: 'hexagon',
+        shape: 'polygon',
+        params: { sides: 6 },
         x: 0,
         y: 0,
         width: 360,
@@ -54,8 +57,8 @@ export function sampleDocument(): SvgDocument {
 
   const ring = createShapeLayer({
     name: 'Ring',
-    shape: 'ring',
-    params: { thickness: 14 },
+    shape: 'ellipse',
+    params: { hole: 86 },
     x: 256,
     y: 256,
     width: 250,
@@ -93,8 +96,8 @@ export function sampleDocument(): SvgDocument {
 
   const lensRim = createShapeLayer({
     name: 'Lens rim',
-    shape: 'ring',
-    params: { thickness: 6 },
+    shape: 'ellipse',
+    params: { hole: 94 },
     x: 370,
     y: 150,
     width: 150,

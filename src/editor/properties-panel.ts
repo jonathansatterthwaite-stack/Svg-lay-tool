@@ -18,8 +18,12 @@ import { effectsEditor } from './effects-editor';
 import { button, checkbox, colorField, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
 
+export type PropertiesMode = 'auto' | 'document' | 'layer';
+
 export class PropertiesPanel {
   readonly el: HTMLDivElement;
+  /** `auto` shows canvas settings when nothing is selected; the others pin one view (mobile tabs). */
+  mode: PropertiesMode = 'auto';
 
   constructor(private editor: SvgLayEditor) {
     this.el = el('div', { class: 'slt-props' });
@@ -33,8 +37,17 @@ export class PropertiesPanel {
     }
     this.el.replaceChildren();
     const layers = this.editor.selectedLayers();
-    if (layers.length === 0) this.renderDocument();
-    else if (layers.length === 1) this.renderLayer(layers[0]);
+    if (this.mode === 'document') {
+      this.renderDocument();
+      return;
+    }
+    if (layers.length === 0) {
+      if (this.mode === 'layer') {
+        this.el.appendChild(
+          section('Layer', [el('div', { class: 'slt-hint' }, ['Nothing selected. Tap a shape on the canvas or pick one in the Layers tab.'])]),
+        );
+      } else this.renderDocument();
+    } else if (layers.length === 1) this.renderLayer(layers[0]);
     else this.renderMulti(layers);
   }
 

@@ -154,11 +154,24 @@ files look identical to the canvas.
 
 ### Shape library
 
-Built in: rectangle, rounded rectangle, ellipse, triangle, right triangle,
-diamond, trapezoid, parallelogram, semicircle, pie/sector, ring, polygon,
-pentagon, hexagon, octagon, star, gear, arrow, chevron, plus, crescent, heart,
-lightning, teardrop, shield. Several expose parameters (star points, gear
-teeth, ring thickness …) that are editable in the properties panel.
+A small set of parametric shapes covers what used to be many fixed ones:
+
+| shape        | parameters                                   | covers                                         |
+| ------------ | -------------------------------------------- | ---------------------------------------------- |
+| Polygon      | sides (3–24), corner radius                  | rectangle, rounded rectangle, triangle, pentagon, hexagon, octagon … |
+| Ellipse / arc| sweep angle, start angle, hole               | circle, ellipse, ring, pie, semicircle, annular sector |
+| Quad         | top width, top offset, corner radius         | trapezoid, parallelogram, right triangle, kite |
+| Star         | points, inner radius, corner radius          |                                                |
+| Gear         | teeth, tooth depth, hole                     |                                                |
+| Arrow        | head length, shaft thickness, corner radius  | arrow, arrowhead                               |
+| Chevron      | thickness, corner radius                     |                                                |
+| Plus / cross | arm thickness, corner radius                 |                                                |
+| Crescent, heart, lightning, teardrop, shield | (lightning has corner radius) |                                  |
+
+A 4-sided polygon is an axis-aligned rectangle filling the layer's box, and
+every polygon has a flat bottom edge. Legacy ids such as `rect`, `hexagon`,
+`ring` or `trapezoid` are still accepted by `createShapeLayer()` and by loaded
+documents; they map onto the parametric shapes with matching parameters.
 
 Add your own — a shape is just a function from size to path data, centred on
 the origin:
@@ -276,6 +289,8 @@ new SvgLayEditor(host: HTMLElement, options?: EditorOptions)
 | `theme`             | `'dark'` (default), `'light'` or `'auto'`                                      |
 | `colors`            | inline theme token overrides, see Theming                                      |
 | `features`          | capability switches and colour mode, see Features                              |
+| `layout`            | `'auto'` (default), `'desktop'` or `'mobile'`; see Mobile layout                |
+| `mobileBreakpoint`  | width in px below which `auto` uses the mobile layout (default 700)            |
 | `panels`            | `{ toolbar, library, layers, properties }` booleans to hide UI parts          |
 | `shapes`            | list of shape ids allowed in the library                                       |
 | `shadow`            | `false` to render into light DOM instead of a shadow root                      |
@@ -311,6 +326,17 @@ Methods (all changes are undoable):
 | reorder                       | `[` `]` (with Ctrl: to back / front); drag rows in the layer list |
 | undo / redo                   | Ctrl+Z / Ctrl+Y                                        |
 | pan / zoom                    | scroll or Space+drag / Ctrl+scroll, Ctrl+0 to fit       |
+
+## Mobile layout
+
+When the editor is narrower than `mobileBreakpoint` (700px by default), or
+`layout: 'mobile'` is set, the side panels become a bottom sheet with tabs:
+**Shapes**, **Layers**, **Canvas** (document settings) and **Layer** (the
+selected layer's settings). The canvas takes the rest of the screen; tapping
+the active tab collapses the sheet to give the canvas everything. Adding a
+shape or selecting one jumps to the Layer tab. Pinch to zoom, two-finger drag
+to pan, and handles are enlarged on touch screens. `editor.showTab('layers')`
+drives the tabs programmatically.
 
 ## Headless core
 

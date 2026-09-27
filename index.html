@@ -17,6 +17,11 @@
       header .flags { display: flex; gap: 6px; }
       header .flags label { gap: 2px; }
       #editor { flex: 1; min-height: 0; }
+      @media (max-width: 700px) {
+        header { padding: 6px 8px; gap: 6px; }
+        header > span, header .flags { display: none; }
+        header .controls { gap: 6px; }
+      }
     </style>
   </head>
   <body>

@@ -12,7 +12,7 @@ import {
   IDENTITY,
 } from './matrix';
 import { EFFECT_DEFS } from './effects';
-import { defaultShapeParams, getShape } from './shapes';
+import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
 import type { Effect, GroupLayer, Layer, MaskSettings, Rect, ShapeLayer, SvgDocument } from './types';
 
 // ---------------------------------------------------------------------------
@@ -39,8 +39,9 @@ export type ShapeLayerInit = Partial<Omit<ShapeLayer, 'type' | 'id'>> & { shape?
 export type GroupLayerInit = Partial<Omit<GroupLayer, 'type' | 'id'>>;
 
 export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
-  const shapeId = init.shape ?? 'rect';
-  const def = getShape(shapeId);
+  const resolved = resolveShapeAlias(init.shape ?? 'polygon', init.params ?? {});
+  const def = getShape(resolved.id);
+  init = { ...init, shape: def.id, params: resolved.params };
   return {
     type: 'shape',
     id: createId('l'),
@@ -520,14 +521,15 @@ function normalizeLayer(input: unknown): Layer | null {
       : [];
     return { ...base, type: 'group', scale: num(raw.scale, 1) || 1, children };
   }
-  const shape = str(raw.shape, 'rect');
-  const def = getShape(shape);
-  const params: Record<string, number> = { ...defaultShapeParams(def) };
+  const rawParams: Record<string, number> = {};
   if (raw.params && typeof raw.params === 'object') {
     for (const [k, v] of Object.entries(raw.params as Record<string, unknown>)) {
-      if (typeof v === 'number' && Number.isFinite(v)) params[k] = v;
+      if (typeof v === 'number' && Number.isFinite(v)) rawParams[k] = v;
     }
   }
+  const resolved = resolveShapeAlias(str(raw.shape, 'polygon'), rawParams);
+  const def = getShape(resolved.id);
+  const params: Record<string, number> = { ...defaultShapeParams(def), ...resolved.params };
   const rawFill = raw.fill as Record<string, unknown> | undefined;
   let fill: ShapeLayer['fill'] = { type: 'solid', color: '#e8e8e8' };
   if (rawFill && typeof rawFill === 'object') {

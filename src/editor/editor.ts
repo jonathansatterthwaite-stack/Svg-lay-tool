@@ -36,6 +36,7 @@ import {
 import { grayHex } from '../core/color';
 import { CanvasView } from './canvas';
 import { el, isEditableTarget } from './dom';
+import { icon } from './icons';
 import { LayersPanel } from './layers-panel';
 import { LibraryPanel } from './library-panel';
 import { PropertiesPanel } from './properties-panel';
@@ -60,6 +61,14 @@ export interface EditorOptions {
   features?: Partial<EditorFeatures>;
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
+  /**
+   * `desktop`: side panels. `mobile`: canvas on top with a tabbed bottom sheet
+   * (Shapes / Layers / Canvas / Layer). `auto` (default) picks by the editor's
+   * own width, switching below `mobileBreakpoint`.
+   */
+  layout?: 'auto' | 'desktop' | 'mobile';
+  /** Width in px under which `auto` uses the mobile layout (default 700). */
+  mobileBreakpoint?: number;
   /** Restrict the shape library to these shape ids (same as `features.shapes`). */
   shapes?: string[];
   /** Render into a shadow root (default true) so host CSS cannot leak in. */
@@ -67,6 +76,8 @@ export interface EditorOptions {
   onChange?: (doc: SvgDocument) => void;
   onSelectionChange?: (ids: string[]) => void;
 }
+
+export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer';
 
 export interface ViewState {
   zoom: number;
@@ -99,6 +110,15 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   private rootEl: HTMLElement;
   private canvas: CanvasView;
+  private sideEl: HTMLElement | null = null;
+  private sheetEl: HTMLElement | null = null;
+  private tabsEl: HTMLElement | null = null;
+  private tabButtons = new Map<MobileTab, HTMLButtonElement>();
+  private activeTab: MobileTab = 'shapes';
+  private sheetOpen = true;
+  private currentLayout: 'desktop' | 'mobile' | null = null;
+  private layoutObserver: ResizeObserver | null = null;
+  private panelsEnabled = { toolbar: true, library: true, layers: true, properties: true };
   private toolbar: Toolbar | null = null;
   private library: LibraryPanel | null = null;
   private layersPanel: LayersPanel | null = null;
@@ -125,34 +145,30 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.rootEl = el('div', { class: 'slt-root', dataset: { theme: options.theme ?? 'dark' } });
     if (options.colors) this.setColors(options.colors);
     const panels = { toolbar: true, library: true, layers: true, properties: true, ...(options.panels ?? {}) };
+    this.panelsEnabled = panels;
     if (!panels.toolbar) this.rootEl.dataset.noToolbar = '';
     if (!panels.library) this.rootEl.dataset.noLibrary = '';
     if (!panels.layers && !panels.properties) this.rootEl.dataset.noSide = '';
 
-    if (panels.toolbar) {
-      this.toolbar = new Toolbar(this);
-      this.rootEl.appendChild(this.toolbar.el);
-    }
-    if (panels.library) {
-      this.library = new LibraryPanel(this);
-      this.rootEl.appendChild(this.library.el);
-    }
+    if (panels.toolbar) this.toolbar = new Toolbar(this);
+    if (panels.library) this.library = new LibraryPanel(this);
     this.canvas = new CanvasView(this);
-    this.rootEl.appendChild(this.canvas.el);
-    if (panels.layers || panels.properties) {
-      const side = el('div', { class: 'slt-side' });
-      if (panels.layers) {
-        this.layersPanel = new LayersPanel(this);
-        side.appendChild(this.layersPanel.el);
-      }
-      if (panels.properties) {
-        this.propsPanel = new PropertiesPanel(this);
-        side.appendChild(this.propsPanel.el);
-      }
-      this.rootEl.appendChild(side);
-    }
+    if (panels.layers) this.layersPanel = new LayersPanel(this);
+    if (panels.properties) this.propsPanel = new PropertiesPanel(this);
     this.root.appendChild(style);
     this.root.appendChild(this.rootEl);
+
+    const layout = options.layout ?? 'auto';
+    if (layout === 'auto' && typeof ResizeObserver !== 'undefined') {
+      this.applyLayout(this.host.clientWidth > 0 && this.host.clientWidth < (options.mobileBreakpoint ?? 700) ? 'mobile' : 'desktop');
+      this.layoutObserver = new ResizeObserver((entries) => {
+        const w = entries[0]?.contentRect.width ?? this.host.clientWidth;
+        if (w > 0) this.applyLayout(w < (options.mobileBreakpoint ?? 700) ? 'mobile' : 'desktop');
+      });
+      this.layoutObserver.observe(this.host);
+    } else {
+      this.applyLayout(layout === 'mobile' ? 'mobile' : 'desktop');
+    }
 
     this.disposers.push(
       this.store.on('change', (d, meta) => {
@@ -174,6 +190,94 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     requestAnimationFrame(() => {
       if (!this.destroyed) this.canvas.fitToView();
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Layout
+
+  get layout(): 'desktop' | 'mobile' {
+    return this.currentLayout ?? 'desktop';
+  }
+
+  /** Arrange the panels for the given layout (also called by the auto observer). */
+  applyLayout(mode: 'desktop' | 'mobile'): void {
+    if (mode === this.currentLayout) return;
+    this.currentLayout = mode;
+    this.rootEl.dataset.layout = mode;
+    // Detach everything, then rebuild.
+    for (const child of [...this.rootEl.children]) child.remove();
+    this.sideEl = null;
+    this.sheetEl = null;
+    this.tabsEl = null;
+    this.tabButtons.clear();
+    if (this.propsPanel) this.propsPanel.mode = 'auto';
+
+    if (this.toolbar) this.rootEl.appendChild(this.toolbar.el);
+    if (mode === 'desktop') {
+      if (this.library) this.rootEl.appendChild(this.library.el);
+      this.rootEl.appendChild(this.canvas.el);
+      if (this.layersPanel || this.propsPanel) {
+        this.sideEl = el('div', { class: 'slt-side' }, [this.layersPanel?.el ?? null, this.propsPanel?.el ?? null]);
+        this.rootEl.appendChild(this.sideEl);
+      }
+    } else {
+      this.rootEl.appendChild(this.canvas.el);
+      this.sheetEl = el('div', { class: 'slt-sheet' });
+      this.tabsEl = el('div', { class: 'slt-tabs', role: 'tablist' });
+      const tabs: { id: MobileTab; label: string; ic: Parameters<typeof icon>[0]; show: boolean }[] = [
+        { id: 'shapes', label: 'Shapes', ic: 'shape', show: !!this.library },
+        { id: 'layers', label: 'Layers', ic: 'folder', show: !!this.layersPanel },
+        { id: 'canvas', label: 'Canvas', ic: 'fit', show: !!this.propsPanel },
+        { id: 'layer', label: 'Layer', ic: 'settings', show: !!this.propsPanel },
+      ];
+      for (const t of tabs) {
+        if (!t.show) continue;
+        const b = el('button', { class: 'slt-tab', type: 'button', role: 'tab', dataset: { tab: t.id } }, [icon(t.ic), el('span', {}, [t.label])]);
+        b.addEventListener('click', () => this.toggleTab(t.id));
+        this.tabButtons.set(t.id, b);
+        this.tabsEl.appendChild(b);
+      }
+      this.rootEl.appendChild(this.sheetEl);
+      this.rootEl.appendChild(this.tabsEl);
+      if (!this.tabButtons.has(this.activeTab)) this.activeTab = this.tabButtons.keys().next().value ?? 'shapes';
+      this.showTab(this.activeTab);
+    }
+    this.refresh(false);
+    requestAnimationFrame(() => {
+      if (!this.destroyed) this.canvas.fitToView();
+    });
+  }
+
+  /** Mobile layout: show a tab in the bottom sheet. */
+  showTab(tab: MobileTab, open = true): void {
+    if (!this.sheetEl || !this.tabsEl) return;
+    this.activeTab = tab;
+    this.sheetOpen = open;
+    for (const [id, b] of this.tabButtons) {
+      if (id === tab && open) b.dataset.active = '';
+      else delete b.dataset.active;
+      b.setAttribute('aria-selected', id === tab && open ? 'true' : 'false');
+    }
+    this.sheetEl.replaceChildren();
+    if (open) {
+      const panel = tab === 'shapes' ? this.library?.el : tab === 'layers' ? this.layersPanel?.el : this.propsPanel?.el;
+      if (this.propsPanel && (tab === 'canvas' || tab === 'layer')) {
+        this.propsPanel.mode = tab === 'canvas' ? 'document' : 'layer';
+        this.propsPanel.render();
+      }
+      if (panel) this.sheetEl.appendChild(panel);
+      delete this.rootEl.dataset.sheetClosed;
+    } else {
+      this.rootEl.dataset.sheetClosed = '';
+    }
+    requestAnimationFrame(() => {
+      if (!this.destroyed) this.canvas.renderOverlay();
+    });
+  }
+
+  private toggleTab(tab: MobileTab): void {
+    if (this.activeTab === tab && this.sheetOpen) this.showTab(tab, false);
+    else this.showTab(tab, true);
   }
 
   // -------------------------------------------------------------------------
@@ -231,6 +335,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     const same = ids.length === this.selection.length && ids.every((id, i) => id === this.selection[i]);
     if (same) return;
     this.selection = ids;
+    // On mobile, selecting something while looking at canvas settings jumps to the layer settings.
+    if (this.layout === 'mobile' && ids.length && this.activeTab === 'canvas' && this.sheetOpen) this.showTab('layer');
     this.refresh(false);
     this.emit('selectionchange', ids);
     this.options.onSelectionChange?.(ids);
@@ -297,6 +403,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     });
     this.store.commit((d) => insertLayer(d, layer, parentId, index));
     this.select([layer.id]);
+    if (this.layout === 'mobile' && this.tabButtons.has('layer')) this.showTab('layer');
     return layer.id;
   }
 
@@ -553,6 +660,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (this.destroyed) return;
     this.destroyed = true;
     for (const d of this.disposers) d();
+    this.layoutObserver?.disconnect();
     this.canvas.destroy();
     this.toolbar?.destroy();
     this.removeAllListeners();

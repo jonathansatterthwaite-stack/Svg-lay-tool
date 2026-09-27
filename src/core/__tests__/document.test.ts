@@ -141,12 +141,23 @@ describe('document ops', () => {
     expect(star.effects[0]).toMatchObject({ type: 'blur', radius: 4, enabled: true });
     const g = doc.layers[1] as GroupLayer;
     expect(g.mask!.mode).toBe('clip');
-    expect(g.children[0].type === 'shape' && g.children[0].shape).toBe('rect');
+    expect(g.children[0].type === 'shape' && g.children[0].shape).toBe('polygon');
   });
 
-  it('createShapeLayer merges params with defaults', () => {
+  it('createShapeLayer merges params with defaults and resolves aliases', () => {
     const l = createShapeLayer({ shape: 'star', params: { points: 8 } });
-    expect(l.params).toEqual({ points: 8, inner: 45 });
+    expect(l.params).toEqual({ points: 8, inner: 45, radius: 0 });
+    const legacy = createShapeLayer({ shape: 'hexagon' });
+    expect(legacy.shape).toBe('polygon');
+    expect(legacy.params.sides).toBe(6);
+    expect(legacy.name).toBe('Polygon');
     expect(createGroupLayer().children).toEqual([]);
+  });
+
+  it('normalises legacy shape ids in loaded documents', () => {
+    const doc = normalizeDocument({ layers: [{ type: 'shape', shape: 'ring', params: { thickness: 20 } }] });
+    const l = doc.layers[0];
+    expect(l.type === 'shape' && l.shape).toBe('ellipse');
+    expect(l.type === 'shape' && l.params).toEqual({ sweep: 360, start: 0, hole: 80 });
   });
 });

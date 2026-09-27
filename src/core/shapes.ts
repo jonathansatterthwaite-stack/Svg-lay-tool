@@ -35,7 +35,7 @@ export function unregisterShape(id: string): void {
 }
 
 export function getShape(id: string): ShapeDefinition {
-  return registry.get(id) ?? registry.get('rect')!;
+  return registry.get(id) ?? registry.get(SHAPE_ALIASES[id]?.id ?? '') ?? registry.get('polygon')!;
 }
 
 export function hasShape(id: string): boolean {
@@ -78,47 +78,92 @@ function norm(w: number, h: number, pts: Pt[]): Pt[] {
   return pts.map(([nx, ny]) => [nx * w - w / 2, ny * h - h / 2]);
 }
 
-function regularPolygonPoints(w: number, h: number, sides: number, startDeg = -90): Pt[] {
-  const pts: Pt[] = [];
-  const rx = w / 2;
-  const ry = h / 2;
-  for (let i = 0; i < sides; i++) {
-    const a = ((startDeg + (360 / sides) * i) * Math.PI) / 180;
-    pts.push([rx * Math.cos(a), ry * Math.sin(a)]);
+/**
+ * Regular polygon with a flat bottom edge, stretched to fill the w×h box
+ * (so 4 sides is an axis-aligned rectangle and 3 an isosceles triangle).
+ */
+function regularPolygonPoints(w: number, h: number, sides: number): Pt[] {
+  const n = Math.max(3, Math.round(sides));
+  const startDeg = 90 + 180 / n; // symmetric about straight down → horizontal bottom edge
+  const raw: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = ((startDeg + (360 / n) * i) * Math.PI) / 180;
+    raw.push([Math.cos(a), Math.sin(a)]);
   }
-  return pts;
+  return fitToBox(raw, w, h);
+}
+
+/** Scale/translate points so their bounding box becomes the centred w×h box. */
+function fitToBox(pts: Pt[], w: number, h: number): Pt[] {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const sw = maxX - minX || 1;
+  const sh = maxY - minY || 1;
+  return pts.map(([x, y]) => [((x - minX) / sw - 0.5) * w, ((y - minY) / sh - 0.5) * h]);
+}
+
+/**
+ * Path for a closed polygon with rounded corners. `radius` is the distance
+ * cut back along each edge; it is clamped to half of the shorter adjacent edge.
+ */
+function roundedPoly(points: Pt[], radius: number): string {
+  if (radius <= 0.01 || points.length < 3) return poly(points);
+  const n = points.length;
+  const segs: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const prev = points[(i - 1 + n) % n];
+    const cur = points[i];
+    const next = points[(i + 1) % n];
+    const d1 = dist(prev, cur);
+    const d2 = dist(cur, next);
+    const cut = Math.min(radius, d1 / 2, d2 / 2);
+    if (cut < 0.01 || d1 === 0 || d2 === 0) {
+      segs.push(`${i === 0 ? 'M' : 'L'}${fmt(cur[0])} ${fmt(cur[1])}`);
+      continue;
+    }
+    const p1: Pt = [cur[0] + ((prev[0] - cur[0]) / d1) * cut, cur[1] + ((prev[1] - cur[1]) / d1) * cut];
+    const p2: Pt = [cur[0] + ((next[0] - cur[0]) / d2) * cut, cur[1] + ((next[1] - cur[1]) / d2) * cut];
+    // Interior angle → circular arc radius that meets both edges tangentially.
+    const v1 = [prev[0] - cur[0], prev[1] - cur[1]];
+    const v2 = [next[0] - cur[0], next[1] - cur[1]];
+    const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (d1 * d2);
+    const theta = Math.acos(Math.max(-1, Math.min(1, cos)));
+    const r = cut * Math.tan(theta / 2);
+    const cross = v1[0] * v2[1] - v1[1] * v2[0];
+    const sweep = cross > 0 ? 0 : 1;
+    segs.push(`${i === 0 ? 'M' : 'L'}${fmt(p1[0])} ${fmt(p1[1])}`);
+    if (Number.isFinite(r) && r > 0.01) segs.push(`A${fmt(r)} ${fmt(r)} 0 0 ${sweep} ${fmt(p2[0])} ${fmt(p2[1])}`);
+    else segs.push(`Q${fmt(cur[0])} ${fmt(cur[1])} ${fmt(p2[0])} ${fmt(p2[1])}`);
+  }
+  return segs.join(' ') + ' Z';
+}
+
+function dist(a: Pt, b: Pt): number {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);
+}
+
+function arcPoint(rx: number, ry: number, deg: number): Pt {
+  const a = ((deg - 90) * Math.PI) / 180;
+  return [rx * Math.cos(a), ry * Math.sin(a)];
+}
+
+const RADIUS_PARAM: ShapeParam = { key: 'radius', label: 'Corner radius %', min: 0, max: 100, step: 1, default: 0 };
+
+function cornerRadius(w: number, h: number, pct: number): number {
+  return (Math.min(w, h) / 2) * (pct / 100);
 }
 
 function ellipsePath(rx: number, ry: number, reverse = false): string {
   const sweep = reverse ? 0 : 1;
   return `M${fmt(-rx)} 0 A${fmt(rx)} ${fmt(ry)} 0 1 ${sweep} ${fmt(rx)} 0 A${fmt(rx)} ${fmt(ry)} 0 1 ${sweep} ${fmt(-rx)} 0 Z`;
-}
-
-function roundedRectPath(w: number, h: number, r: number): string {
-  const hw = w / 2;
-  const hh = h / 2;
-  r = Math.max(0, Math.min(r, hw, hh));
-  if (r === 0) {
-    return poly([
-      [-hw, -hh],
-      [hw, -hh],
-      [hw, hh],
-      [-hw, hh],
-    ]);
-  }
-  const a = (x: number, y: number) => `A${fmt(r)} ${fmt(r)} 0 0 1 ${fmt(x)} ${fmt(y)}`;
-  return [
-    `M${fmt(-hw + r)} ${fmt(-hh)}`,
-    `L${fmt(hw - r)} ${fmt(-hh)}`,
-    a(hw, -hh + r),
-    `L${fmt(hw)} ${fmt(hh - r)}`,
-    a(hw - r, hh),
-    `L${fmt(-hw + r)} ${fmt(hh)}`,
-    a(-hw, hh - r),
-    `L${fmt(-hw)} ${fmt(-hh + r)}`,
-    a(-hw + r, -hh),
-    'Z',
-  ].join(' ');
 }
 
 /** Cubic path from normalised coordinates: array of ['M'|'L'|'C'|'Z', ...numbers]. */
@@ -140,156 +185,83 @@ function normPath(w: number, h: number, cmds: (string | number)[][]): string {
 
 const builtin: ShapeDefinition[] = [
   {
-    id: 'rect',
-    name: 'Rectangle',
+    id: 'polygon',
+    name: 'Polygon',
     category: 'Basic',
-    path: (w, h) => roundedRectPath(w, h, 0),
-  },
-  {
-    id: 'rounded-rect',
-    name: 'Rounded rectangle',
-    category: 'Basic',
-    params: [{ key: 'radius', label: 'Corner radius', min: 0, max: 50, step: 1, default: 15 }],
-    path: (w, h, p) => roundedRectPath(w, h, (Math.min(w, h) * p.radius) / 100),
+    params: [{ key: 'sides', label: 'Sides', min: 3, max: 24, step: 1, default: 4 }, RADIUS_PARAM],
+    path: (w, h, p) => roundedPoly(regularPolygonPoints(w, h, p.sides), cornerRadius(w, h, p.radius)),
   },
   {
     id: 'ellipse',
-    name: 'Ellipse',
+    name: 'Ellipse / arc',
     category: 'Basic',
-    path: (w, h) => ellipsePath(w / 2, h / 2),
-  },
-  {
-    id: 'triangle',
-    name: 'Triangle',
-    category: 'Basic',
-    path: (w, h) =>
-      poly([
-        [0, -h / 2],
-        [w / 2, h / 2],
-        [-w / 2, h / 2],
-      ]),
-  },
-  {
-    id: 'right-triangle',
-    name: 'Right triangle',
-    category: 'Basic',
-    path: (w, h) =>
-      poly([
-        [-w / 2, -h / 2],
-        [w / 2, h / 2],
-        [-w / 2, h / 2],
-      ]),
-  },
-  {
-    id: 'diamond',
-    name: 'Diamond',
-    category: 'Basic',
-    path: (w, h) =>
-      poly([
-        [0, -h / 2],
-        [w / 2, 0],
-        [0, h / 2],
-        [-w / 2, 0],
-      ]),
-  },
-  {
-    id: 'trapezoid',
-    name: 'Trapezoid',
-    category: 'Basic',
-    params: [{ key: 'top', label: 'Top width %', min: 0, max: 100, step: 1, default: 60 }],
-    path: (w, h, p) => {
-      const t = (w / 2) * (p.top / 100);
-      return poly([
-        [-t, -h / 2],
-        [t, -h / 2],
-        [w / 2, h / 2],
-        [-w / 2, h / 2],
-      ]);
-    },
-  },
-  {
-    id: 'parallelogram',
-    name: 'Parallelogram',
-    category: 'Basic',
-    params: [{ key: 'skew', label: 'Skew %', min: 0, max: 90, step: 1, default: 25 }],
-    path: (w, h, p) => {
-      const s = w * (p.skew / 100);
-      return poly([
-        [-w / 2 + s, -h / 2],
-        [w / 2, -h / 2],
-        [w / 2 - s, h / 2],
-        [-w / 2, h / 2],
-      ]);
-    },
-  },
-  {
-    id: 'semicircle',
-    name: 'Semicircle',
-    category: 'Basic',
-    path: (w, h) => `M${fmt(-w / 2)} ${fmt(h / 2)} A${fmt(w / 2)} ${fmt(h)} 0 0 1 ${fmt(w / 2)} ${fmt(h / 2)} Z`,
-  },
-  {
-    id: 'pie',
-    name: 'Pie / sector',
-    category: 'Basic',
+    fillRule: 'evenodd',
     params: [
-      { key: 'sweep', label: 'Sweep angle', min: 1, max: 359, step: 1, default: 90 },
+      { key: 'sweep', label: 'Sweep angle', min: 1, max: 360, step: 1, default: 360 },
       { key: 'start', label: 'Start angle', min: 0, max: 359, step: 1, default: 0 },
+      { key: 'hole', label: 'Hole %', min: 0, max: 99, step: 1, default: 0 },
     ],
     path: (w, h, p) => {
       const rx = w / 2;
       const ry = h / 2;
-      const a0 = ((p.start - 90) * Math.PI) / 180;
-      const a1 = ((p.start + p.sweep - 90) * Math.PI) / 180;
+      const k = p.hole / 100;
+      const full = p.sweep >= 360;
+      if (full) {
+        const outer = ellipsePath(rx, ry);
+        return k > 0 ? `${outer} ${ellipsePath(rx * k, ry * k, true)}` : outer;
+      }
       const large = p.sweep > 180 ? 1 : 0;
-      return `M0 0 L${fmt(rx * Math.cos(a0))} ${fmt(ry * Math.sin(a0))} A${fmt(rx)} ${fmt(ry)} 0 ${large} 1 ${fmt(
-        rx * Math.cos(a1),
-      )} ${fmt(ry * Math.sin(a1))} Z`;
+      const [x0, y0] = arcPoint(rx, ry, p.start);
+      const [x1, y1] = arcPoint(rx, ry, p.start + p.sweep);
+      if (k <= 0) {
+        return `M0 0 L${fmt(x0)} ${fmt(y0)} A${fmt(rx)} ${fmt(ry)} 0 ${large} 1 ${fmt(x1)} ${fmt(y1)} Z`;
+      }
+      const [ix0, iy0] = arcPoint(rx * k, ry * k, p.start);
+      const [ix1, iy1] = arcPoint(rx * k, ry * k, p.start + p.sweep);
+      return `M${fmt(x0)} ${fmt(y0)} A${fmt(rx)} ${fmt(ry)} 0 ${large} 1 ${fmt(x1)} ${fmt(y1)} L${fmt(ix1)} ${fmt(iy1)} A${fmt(
+        rx * k,
+      )} ${fmt(ry * k)} 0 ${large} 0 ${fmt(ix0)} ${fmt(iy0)} Z`;
     },
   },
   {
-    id: 'ring',
-    name: 'Ring',
+    id: 'quad',
+    name: 'Quad (trapezoid / skew)',
     category: 'Basic',
-    fillRule: 'evenodd',
-    params: [{ key: 'thickness', label: 'Thickness %', min: 1, max: 100, step: 1, default: 30 }],
+    params: [
+      { key: 'top', label: 'Top width %', min: 0, max: 100, step: 1, default: 60 },
+      { key: 'offset', label: 'Top offset %', min: -100, max: 100, step: 1, default: 0 },
+      RADIUS_PARAM,
+    ],
     path: (w, h, p) => {
-      const k = 1 - p.thickness / 100;
-      return `${ellipsePath(w / 2, h / 2)} ${ellipsePath((w / 2) * k, (h / 2) * k, true)}`;
+      const hw = w / 2;
+      const hh = h / 2;
+      const half = hw * (p.top / 100);
+      // Offset moves the top edge sideways; 100 % puts its centre on the right edge.
+      const cx = (p.offset / 100) * (hw - half);
+      const pts: Pt[] =
+        half < 0.01
+          ? [
+              [cx, -hh],
+              [hw, hh],
+              [-hw, hh],
+            ]
+          : [
+              [cx - half, -hh],
+              [cx + half, -hh],
+              [hw, hh],
+              [-hw, hh],
+            ];
+      return roundedPoly(pts, cornerRadius(w, h, p.radius));
     },
-  },
-  {
-    id: 'polygon',
-    name: 'Polygon',
-    category: 'Geometric',
-    params: [{ key: 'sides', label: 'Sides', min: 3, max: 16, step: 1, default: 6 }],
-    path: (w, h, p) => poly(regularPolygonPoints(w, h, Math.round(p.sides))),
-  },
-  {
-    id: 'pentagon',
-    name: 'Pentagon',
-    category: 'Geometric',
-    path: (w, h) => poly(regularPolygonPoints(w, h, 5)),
-  },
-  {
-    id: 'hexagon',
-    name: 'Hexagon',
-    category: 'Geometric',
-    path: (w, h) => poly(regularPolygonPoints(w, h, 6, 0)),
-  },
-  {
-    id: 'octagon',
-    name: 'Octagon',
-    category: 'Geometric',
-    path: (w, h) => poly(regularPolygonPoints(w, h, 8, 22.5)),
   },
   {
     id: 'star',
     name: 'Star',
-    category: 'Geometric',
+    category: 'Basic',
     params: [
-      { key: 'points', label: 'Points', min: 3, max: 16, step: 1, default: 5 },
-      { key: 'inner', label: 'Inner radius %', min: 5, max: 95, step: 1, default: 45 },
+      { key: 'points', label: 'Points', min: 3, max: 24, step: 1, default: 5 },
+      { key: 'inner', label: 'Inner radius %', min: 5, max: 100, step: 1, default: 45 },
+      RADIUS_PARAM,
     ],
     path: (w, h, p) => {
       const n = Math.round(p.points);
@@ -300,13 +272,13 @@ const builtin: ShapeDefinition[] = [
         const r = i % 2 === 0 ? 1 : k;
         pts.push([(w / 2) * r * Math.cos(a), (h / 2) * r * Math.sin(a)]);
       }
-      return poly(pts);
+      return roundedPoly(pts, cornerRadius(w, h, p.radius));
     },
   },
   {
     id: 'gear',
     name: 'Gear',
-    category: 'Geometric',
+    category: 'Basic',
     fillRule: 'evenodd',
     params: [
       { key: 'teeth', label: 'Teeth', min: 4, max: 24, step: 1, default: 8 },
@@ -341,67 +313,87 @@ const builtin: ShapeDefinition[] = [
     category: 'Symbols',
     params: [
       { key: 'head', label: 'Head length %', min: 5, max: 100, step: 1, default: 40 },
-      { key: 'shaft', label: 'Shaft thickness %', min: 1, max: 100, step: 1, default: 40 },
+      { key: 'shaft', label: 'Shaft thickness %', min: 0, max: 100, step: 1, default: 40 },
+      RADIUS_PARAM,
     ],
     path: (w, h, p) => {
       const hw = w / 2;
       const hh = h / 2;
       const x1 = hw - w * (p.head / 100);
       const s = hh * (p.shaft / 100);
-      return poly([
-        [-hw, -s],
-        [x1, -s],
-        [x1, -hh],
-        [hw, 0],
-        [x1, hh],
-        [x1, s],
-        [-hw, s],
-      ]);
+      const pts: Pt[] =
+        s < 0.01
+          ? [
+              [x1, -hh],
+              [hw, 0],
+              [x1, hh],
+            ]
+          : [
+              [-hw, -s],
+              [x1, -s],
+              [x1, -hh],
+              [hw, 0],
+              [x1, hh],
+              [x1, s],
+              [-hw, s],
+            ];
+      return roundedPoly(pts, cornerRadius(w, h, p.radius));
     },
   },
   {
     id: 'chevron',
     name: 'Chevron',
     category: 'Symbols',
-    params: [{ key: 'thickness', label: 'Thickness %', min: 5, max: 95, step: 1, default: 40 }],
+    params: [{ key: 'thickness', label: 'Thickness %', min: 5, max: 100, step: 1, default: 40 }, RADIUS_PARAM],
     path: (w, h, p) => {
       const hw = w / 2;
       const hh = h / 2;
       const d = w * (p.thickness / 100);
-      return poly([
-        [-hw, -hh],
-        [-hw + d, -hh],
-        [hw, 0],
-        [-hw + d, hh],
-        [-hw, hh],
-        [hw - d, 0],
-      ]);
+      const pts: Pt[] =
+        p.thickness >= 100
+          ? [
+              [-hw, -hh],
+              [hw, 0],
+              [-hw, hh],
+            ]
+          : [
+              [-hw, -hh],
+              [-hw + d, -hh],
+              [hw, 0],
+              [-hw + d, hh],
+              [-hw, hh],
+              [hw - d, 0],
+            ];
+      return roundedPoly(pts, cornerRadius(w, h, p.radius));
     },
   },
   {
     id: 'plus',
     name: 'Plus / cross',
     category: 'Symbols',
-    params: [{ key: 'thickness', label: 'Arm thickness %', min: 5, max: 100, step: 1, default: 30 }],
+    params: [{ key: 'thickness', label: 'Arm thickness %', min: 5, max: 100, step: 1, default: 30 }, RADIUS_PARAM],
     path: (w, h, p) => {
       const hw = w / 2;
       const hh = h / 2;
       const ax = (w * (p.thickness / 100)) / 2;
       const ay = (h * (p.thickness / 100)) / 2;
-      return poly([
-        [-ax, -hh],
-        [ax, -hh],
-        [ax, -ay],
-        [hw, -ay],
-        [hw, ay],
-        [ax, ay],
-        [ax, hh],
-        [-ax, hh],
-        [-ax, ay],
-        [-hw, ay],
-        [-hw, -ay],
-        [-ax, -ay],
-      ]);
+      return roundedPoly(
+        [
+          [-ax, -hh],
+          [ax, -hh],
+          [ax, -ay],
+          [hw, -ay],
+          [hw, ay],
+          [ax, ay],
+          [ax, hh],
+          [-ax, hh],
+          [-ax, ay],
+          [-hw, ay],
+          [-hw, -ay],
+          [-ax, -ay],
+        ],
+        cornerRadius(w, h, p.radius),
+      );
     },
   },
   {
@@ -436,8 +428,9 @@ const builtin: ShapeDefinition[] = [
     id: 'lightning',
     name: 'Lightning',
     category: 'Symbols',
-    path: (w, h) =>
-      poly(
+    params: [RADIUS_PARAM],
+    path: (w, h, p) =>
+      roundedPoly(
         norm(w, h, [
           [0.6, 0],
           [0.15, 0.58],
@@ -447,6 +440,7 @@ const builtin: ShapeDefinition[] = [
           [0.55, 0.4],
           [0.75, 0],
         ]),
+        cornerRadius(w, h, p.radius),
       ),
   },
   {
@@ -481,3 +475,47 @@ const builtin: ShapeDefinition[] = [
 for (const def of builtin) registerShape(def);
 
 export const BUILTIN_SHAPE_IDS: readonly string[] = builtin.map((d) => d.id);
+
+/**
+ * Ids from earlier versions (and handy names) mapped onto the consolidated
+ * shapes. `resolveShapeAlias` is applied when creating or loading layers, so
+ * old documents keep rendering the same picture.
+ */
+export const SHAPE_ALIASES: Record<string, { id: string; params: Record<string, number> }> = {
+  rect: { id: 'polygon', params: { sides: 4 } },
+  rectangle: { id: 'polygon', params: { sides: 4 } },
+  square: { id: 'polygon', params: { sides: 4 } },
+  'rounded-rect': { id: 'polygon', params: { sides: 4, radius: 30 } },
+  triangle: { id: 'polygon', params: { sides: 3 } },
+  pentagon: { id: 'polygon', params: { sides: 5 } },
+  hexagon: { id: 'polygon', params: { sides: 6 } },
+  octagon: { id: 'polygon', params: { sides: 8 } },
+  diamond: { id: 'polygon', params: { sides: 4 } },
+  circle: { id: 'ellipse', params: {} },
+  ring: { id: 'ellipse', params: { hole: 70 } },
+  pie: { id: 'ellipse', params: { sweep: 90 } },
+  semicircle: { id: 'ellipse', params: { sweep: 180, start: 270 } },
+  trapezoid: { id: 'quad', params: { top: 60 } },
+  parallelogram: { id: 'quad', params: { top: 75, offset: 100 } },
+  'right-triangle': { id: 'quad', params: { top: 0, offset: -100 } },
+};
+
+/** Map legacy/alias shape ids onto registered shapes, translating parameters. */
+export function resolveShapeAlias(
+  shapeId: string,
+  params: Record<string, number> = {},
+): { id: string; params: Record<string, number> } {
+  if (registry.has(shapeId)) return { id: shapeId, params };
+  const alias = SHAPE_ALIASES[shapeId];
+  if (!alias) return { id: shapeId, params };
+  const out = { ...alias.params };
+  // Old ring/rounded-rect parameters were expressed differently.
+  if (shapeId === 'ring' && typeof params.thickness === 'number') out.hole = 100 - params.thickness;
+  if (shapeId === 'rounded-rect' && typeof params.radius === 'number') out.radius = params.radius * 2;
+  if (shapeId === 'trapezoid' && typeof params.top === 'number') out.top = params.top;
+  if (shapeId === 'pie') {
+    if (typeof params.sweep === 'number') out.sweep = params.sweep;
+    if (typeof params.start === 'number') out.start = params.start;
+  }
+  return { id: alias.id, params: out };
+}
