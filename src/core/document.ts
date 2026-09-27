@@ -85,6 +85,7 @@ export function createGroupLayer(init: GroupLayerInit = {}): GroupLayer {
     effects: [],
     mask: null,
     scale: 1,
+    stretch: { ...IDENTITY2 },
     children: [],
     ...stripUndefined(init),
   };
@@ -302,7 +303,7 @@ export function cloneLayer(layer: Layer): Layer {
     mask: layer.mask ? { ...layer.mask, effects: cloneEffects(layer.mask.effects) } : null,
   };
   if (base.type === 'group') {
-    return { ...base, children: base.children.map(cloneLayer) };
+    return { ...base, stretch: { ...(base.stretch ?? IDENTITY2) }, children: base.children.map(cloneLayer) };
   }
   return { ...base, params: { ...base.params }, stretch: { ...(base.stretch ?? IDENTITY2) }, fill: { ...base.fill }, stroke: base.stroke ? { ...base.stroke } : null };
 }
@@ -358,62 +359,92 @@ export function isIdentity2(m: Mat2, eps = 1e-6): boolean {
   return Math.abs(m.a - 1) < eps && Math.abs(m.b) < eps && Math.abs(m.c) < eps && Math.abs(m.d - 1) < eps;
 }
 
-/** The linear part of a shape's transform: stretch · rotation · flip. */
-export function shapeLinear(layer: ShapeLayer): Mat {
-  return compose(
-    mat2ToMat(layer.stretch ?? IDENTITY2),
-    rotate(layer.rotation),
-    scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1),
-  );
+/** The linear part of a layer's transform in its parent: stretch · rotation · (flip | uniform scale). */
+export function layerLinear(layer: Layer): Mat {
+  const K = mat2ToMat(layer.stretch ?? IDENTITY2);
+  if (layer.type === 'shape') {
+    return compose(K, rotate(layer.rotation), scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1));
+  }
+  return compose(K, rotate(layer.rotation), scale(layer.scale, layer.scale));
 }
 
-/** The shape's axis-aligned box in the parent, centred on its origin. */
-export function shapeBox(layer: ShapeLayer): Rect {
-  return transformRect({ x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height }, shapeLinear(layer));
+/** @deprecated use layerLinear */
+export function shapeLinear(layer: ShapeLayer): Mat {
+  return layerLinear(layer);
 }
 
 /**
- * Rotate a shape rigidly to `rotation` degrees: the picture turns, nothing
- * stretches. The canvas-axis stretch is carried along by conjugation.
+ * The layer's axis-aligned box in the parent, relative to its origin. For a
+ * shape this is centred on the origin; a group's box is wherever its children
+ * are around the group's pivot. Null for an empty group.
  */
-export function rotateShape(layer: ShapeLayer, rotation: number): ShapeLayer {
+export function layerBox(layer: Layer): Rect | null {
+  const local = layerLocalBounds(layer);
+  if (!local) return null;
+  return transformRect(local, layerLinear(layer));
+}
+
+export function shapeBox(layer: ShapeLayer): Rect {
+  return layerBox(layer)!;
+}
+
+/**
+ * Rotate a layer rigidly to `rotation` degrees about its origin: the picture
+ * turns, nothing stretches. The canvas-axis stretch is carried along by
+ * conjugation.
+ */
+export function rotateLayer<T extends Layer>(layer: T, rotation: number): T {
   const delta = rotation - layer.rotation;
   if (delta === 0) return layer;
   const K = layer.stretch ?? IDENTITY2;
   const stretch = isIdentity2(K) ? K : mul2(mul2(rot2(delta), K), rot2(-delta));
-  return normalizeShape({ ...layer, rotation, stretch });
+  return normalizeLayerStretch({ ...layer, rotation, stretch });
 }
 
-/** Scale a shape's box along the parent's axes by the given factors. */
-export function scaleShapeBox(layer: ShapeLayer, kx: number, ky: number): ShapeLayer {
+export function rotateShape(layer: ShapeLayer, rotation: number): ShapeLayer {
+  return rotateLayer(layer, rotation);
+}
+
+/** Scale a layer's box along the parent's axes about the layer origin. */
+export function scaleLayerBox<T extends Layer>(layer: T, kx: number, ky: number): T {
   const K = layer.stretch ?? IDENTITY2;
   const stretch = mul2({ a: kx, b: 0, c: 0, d: ky }, K);
-  return normalizeShape({ ...layer, stretch });
+  return normalizeLayerStretch({ ...layer, stretch });
 }
 
-/** Resize a shape's box to the given parent-axis dimensions. */
-export function setShapeBoxSize(layer: ShapeLayer, width: number, height: number): ShapeLayer {
-  const box = shapeBox(layer);
+export function scaleShapeBox(layer: ShapeLayer, kx: number, ky: number): ShapeLayer {
+  return scaleLayerBox(layer, kx, ky);
+}
+
+/** Resize a layer's box to the given parent-axis dimensions (about the origin). */
+export function setLayerBoxSize<T extends Layer>(layer: T, width: number, height: number): T {
+  const box = layerBox(layer);
+  if (!box) return layer;
   const kx = box.width > 1e-9 ? width / box.width : 1;
   const ky = box.height > 1e-9 ? height / box.height : 1;
-  return scaleShapeBox(layer, kx, ky);
+  return scaleLayerBox(layer, kx, ky);
+}
+
+export function setShapeBoxSize(layer: ShapeLayer, width: number, height: number): ShapeLayer {
+  return setLayerBoxSize(layer, width, height);
 }
 
 /**
- * Fold a stretch back into the intrinsic size where that is exact: a uniform
- * scale at any angle, or an axis-aligned stretch when the rotation is a
- * multiple of 90°. Geometry (corner radii, strokes) is then regenerated at
- * the new size instead of being stretched. Other cases are left alone.
+ * Fold a stretch back into the layer's own size where that is exact: a
+ * uniform scale at any angle (shape size, or group scale), or an axis-aligned
+ * stretch on a shape when the rotation is a multiple of 90°. Geometry is then
+ * regenerated at the new size instead of being stretched.
  */
-export function normalizeShape(layer: ShapeLayer): ShapeLayer {
+export function normalizeLayerStretch<T extends Layer>(layer: T): T {
   const K = layer.stretch ?? IDENTITY2;
   if (isIdentity2(K)) return layer.stretch ? layer : { ...layer, stretch: { ...IDENTITY2 } };
   const eps = 1e-6;
   if (Math.abs(K.b) > eps || Math.abs(K.c) > eps || K.a <= 0 || K.d <= 0) return layer;
   if (Math.abs(K.a - K.d) < eps) {
-    // Uniform scale commutes with rotation: fold it at any angle.
+    if (layer.type === 'group') return { ...layer, scale: layer.scale * K.a, stretch: { ...IDENTITY2 } };
     return { ...layer, width: layer.width * K.a, height: layer.height * K.a, stretch: { ...IDENTITY2 } };
   }
+  if (layer.type !== 'shape') return layer;
   const r = ((layer.rotation % 360) + 360) % 360;
   const quarter = Math.round(r / 90);
   if (Math.abs(r - quarter * 90) > 1e-6) return layer;
@@ -426,26 +457,25 @@ export function normalizeShape(layer: ShapeLayer): ShapeLayer {
   };
 }
 
+export function normalizeShape(layer: ShapeLayer): ShapeLayer {
+  return normalizeLayerStretch(layer);
+}
+
 export function layerLocalMatrix(layer: Layer): Mat {
-  if (layer.type === 'shape') {
-    return multiply(translate(layer.x, layer.y), shapeLinear(layer));
-  }
-  return compose(translate(layer.x, layer.y), rotate(layer.rotation), scale(layer.scale, layer.scale));
+  return multiply(translate(layer.x, layer.y), layerLinear(layer));
 }
 
 /**
- * The frame in which the layer's handle box is axis aligned: for shapes the
- * parent's axes (translation only, since scaling is done in canvas axes);
- * for groups translation + rotation.
+ * The frame in which the layer's handle box is axis aligned: the parent's
+ * axes, offset to the layer origin (scaling is always done in canvas axes).
  */
 export function layerFrameMatrix(layer: Layer): Mat {
-  if (layer.type === 'shape') return translate(layer.x, layer.y);
-  return multiply(translate(layer.x, layer.y), rotate(layer.rotation));
+  return translate(layer.x, layer.y);
 }
 
-/** Rotation of the handle frame relative to the parent (0 for shapes). */
-export function layerFrameRotation(layer: Layer): number {
-  return layer.type === 'shape' ? 0 : layer.rotation;
+/** Rotation of the handle frame relative to the parent (always 0 now). */
+export function layerFrameRotation(_layer: Layer): number {
+  return 0;
 }
 
 /** Bounds in the layer's own (pre-transform) coordinate system. */
@@ -473,10 +503,7 @@ export function layerBoundsInParent(layer: Layer): Rect | null {
  * frame, scale/flip baked into the rectangle). Handles are drawn on this box.
  */
 export function layerFrameBounds(layer: Layer): Rect | null {
-  if (layer.type === 'shape') return shapeBox(layer);
-  const local = layerLocalBounds(layer);
-  if (!local) return null;
-  return transformRect(local, scale(layer.scale, layer.scale));
+  return layerBox(layer);
 }
 
 /** World matrix of a layer's parent (identity at root). */
@@ -545,14 +572,14 @@ export function ungroupLayer(doc: SvgDocument, groupId: string): { doc: SvgDocum
   if (!loc || loc.layer.type !== 'group') return null;
   const group = loc.layer;
   const m = layerLocalMatrix(group);
+  const Kg = group.stretch ?? IDENTITY2;
   const children = group.children.map((child): Layer => {
     const p = applyToPoint(m, { x: child.x, y: child.y });
-    if (child.type === 'shape') {
-      // Group linear part is s·R(g); rotate the shape rigidly then scale its box uniformly.
-      const rotated = rotateShape({ ...child, x: p.x, y: p.y }, child.rotation + group.rotation);
-      return scaleShapeBox(rotated, group.scale, group.scale);
-    }
-    return { ...child, x: p.x, y: p.y, rotation: child.rotation + group.rotation, scale: child.scale * group.scale };
+    // G·Lc = Kg·R(g)·s·Kc·R(c)·X = [s·Kg·R(g)·Kc·R(-g)]·R(g+c)·X
+    const Kc = child.stretch ?? IDENTITY2;
+    const conj = mul2(mul2(rot2(group.rotation), Kc), rot2(-group.rotation));
+    const stretch = mul2({ a: group.scale, b: 0, c: 0, d: group.scale }, mul2(Kg, conj));
+    return normalizeLayerStretch({ ...child, x: p.x, y: p.y, rotation: child.rotation + group.rotation, stretch });
   });
   let out = removeLayers(doc, [groupId]);
   children.forEach((child, i) => {
@@ -619,7 +646,7 @@ function normalizeLayer(input: unknown): Layer | null {
     const children = Array.isArray(raw.children)
       ? raw.children.map(normalizeLayer).filter((l): l is Layer => !!l)
       : [];
-    return { ...base, type: 'group', scale: num(raw.scale, 1) || 1, children };
+    return { ...base, type: 'group', scale: num(raw.scale, 1) || 1, stretch: parseMat2(raw.stretch), children };
   }
   const rawParams: Record<string, number> = {};
   if (raw.params && typeof raw.params === 'object') {

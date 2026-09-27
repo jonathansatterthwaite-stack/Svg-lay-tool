@@ -5,9 +5,8 @@ import {
   invert,
   layerFrameBounds,
   layerFrameMatrix,
-  layerFrameRotation,
-  rotateShape,
-  scaleShapeBox,
+  rotateLayer,
+  scaleLayerBox,
   layerWorldBounds,
   locateLayer,
   multiply,
@@ -313,12 +312,12 @@ export class CanvasView {
     const rotating = this.drag?.kind === 'rotate';
 
     // Rotation ring: independent of the box, centred on the pivot, handle at the current angle.
-    const pivot = toScreen(layer.type === 'shape' ? { x: 0, y: 0 } : { x: 0, y: 0 });
+    const pivot = toScreen({ x: 0, y: 0 });
     const corners = rectCorners(box).map(toScreen);
     const reach = Math.max(...corners.map((c) => Math.hypot(c.x - pivot.x, c.y - pivot.y)));
     const ringR = reach + (this.coarse ? 28 : 18);
     const rotActive = this.activeHandle === 'rotate';
-    const rotDeg = layer.type === 'shape' ? layer.rotation : 0; // group boxes already turn with the group
+    const rotDeg = layer.rotation;
     const worldAngle = (rotDeg - 90) * (Math.PI / 180) + (frameAngle * Math.PI) / 180;
     const hp = { x: pivot.x + Math.cos(worldAngle) * ringR, y: pivot.y + Math.sin(worldAngle) * ringR };
     this.overlay.appendChild(svgEl('circle', { class: rotating ? 'slt-rotate-ring slt-rotate-ring-active' : 'slt-rotate-ring', cx: pivot.x, cy: pivot.y, r: ringR }));
@@ -600,15 +599,14 @@ export class CanvasView {
         let rotation = d.layer.rotation + ((angle - d.startAngle) * 180) / Math.PI;
         if (e.shiftKey) rotation = Math.round(rotation / 15) * 15;
         rotation = Math.round((((rotation % 360) + 360) % 360) * 10) / 10;
-        this.editor.store.update(
-          updateLayer(d.origDoc, d.id, (l) => (l.type === 'shape' ? rotateShape(l, rotation) : { ...l, rotation })),
-        );
+        this.editor.store.update(updateLayer(d.origDoc, d.id, (l) => rotateLayer(l, rotation)));
         break;
       }
     }
   }
 
   private applyScale(d: Extract<DragState, { kind: 'scale' }>, worldPointer: Point, keepAspect: boolean, fromCentre: boolean): void {
+    // Everything happens in the frame: the parent's axes with the layer origin at (0,0).
     const u = applyToPoint(d.frameInv, worldPointer);
     const { frame, dir, layer } = d;
     const left = frame.x;
@@ -616,85 +614,29 @@ export class CanvasView {
     const top = frame.y;
     const bottom = frame.y + frame.height;
     const centre = { x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 };
-
-    if (layer.type === 'shape') {
-      let nl = left;
-      let nr = right;
-      let nt = top;
-      let nb = bottom;
-      if (fromCentre) {
-        if (dir.hx !== 0) {
-          nl = centre.x - Math.abs(u.x - centre.x);
-          nr = centre.x + Math.abs(u.x - centre.x);
-        }
-        if (dir.hy !== 0) {
-          nt = centre.y - Math.abs(u.y - centre.y);
-          nb = centre.y + Math.abs(u.y - centre.y);
-        }
-      } else {
-        if (dir.hx > 0) nr = u.x;
-        else if (dir.hx < 0) nl = u.x;
-        if (dir.hy > 0) nb = u.y;
-        else if (dir.hy < 0) nt = u.y;
-      }
-      let w = Math.abs(nr - nl);
-      let h = Math.abs(nb - nt);
-      if (keepAspect && frame.width > 0 && frame.height > 0) {
-        const kx = w / frame.width;
-        const ky = h / frame.height;
-        const k = dir.hx === 0 ? ky : dir.hy === 0 ? kx : Math.abs(kx - 1) > Math.abs(ky - 1) ? kx : ky;
-        w = frame.width * k;
-        h = frame.height * k;
-        // Re-anchor on the fixed edge/centre.
-        const ax = fromCentre || dir.hx === 0 ? centre.x : dir.hx > 0 ? left : right;
-        const ay = fromCentre || dir.hy === 0 ? centre.y : dir.hy > 0 ? top : bottom;
-        const sx = fromCentre || dir.hx === 0 ? 0 : dir.hx;
-        const sy = fromCentre || dir.hy === 0 ? 0 : dir.hy;
-        nl = sx === 0 ? ax - w / 2 : sx > 0 ? ax : ax - w;
-        nr = nl + w;
-        nt = sy === 0 ? ay - h / 2 : sy > 0 ? ay : ay - h;
-        nb = nt + h;
-      }
-      w = Math.max(1, w);
-      h = Math.max(1, h);
-      const newCentre = { x: (Math.min(nl, nr) + Math.max(nl, nr)) / 2, y: (Math.min(nt, nb) + Math.max(nt, nb)) / 2 };
-      const shift = applyToVector(rotate(layerFrameRotation(layer)), { x: newCentre.x - centre.x, y: newCentre.y - centre.y });
-      const kx = frame.width > 1e-9 ? w / frame.width : 1;
-      const ky = frame.height > 1e-9 ? h / frame.height : 1;
-      this.editor.store.update(
-        updateLayer<ShapeLayer>(d.origDoc, d.id, (l) => ({
-          ...scaleShapeBox(l, kx, ky),
-          x: round(layer.x + shift.x),
-          y: round(layer.y + shift.y),
-        })),
-      );
-      return;
-    }
-
-    // Groups scale uniformly about the opposite edge/corner (or the centre with Alt).
-    const F = fromCentre
-      ? centre
-      : { x: dir.hx > 0 ? left : dir.hx < 0 ? right : centre.x, y: dir.hy > 0 ? top : dir.hy < 0 ? bottom : centre.y };
+    // Fixed point (stays put) and the handle's start position.
+    const F = {
+      x: fromCentre || dir.hx === 0 ? centre.x : dir.hx > 0 ? left : right,
+      y: fromCentre || dir.hy === 0 ? centre.y : dir.hy > 0 ? top : bottom,
+    };
     const H = { x: dir.hx > 0 ? right : dir.hx < 0 ? left : centre.x, y: dir.hy > 0 ? bottom : dir.hy < 0 ? top : centre.y };
-    let k: number;
-    if (dir.hx !== 0 && dir.hy !== 0) {
-      const hv = { x: H.x - F.x, y: H.y - F.y };
-      const len2 = hv.x * hv.x + hv.y * hv.y || 1;
-      k = ((u.x - F.x) * hv.x + (u.y - F.y) * hv.y) / len2;
-    } else if (dir.hx !== 0) {
-      k = (u.x - F.x) / (H.x - F.x || 1);
-    } else {
-      k = (u.y - F.y) / (H.y - F.y || 1);
+    let kx = dir.hx !== 0 && Math.abs(H.x - F.x) > 1e-9 ? (u.x - F.x) / (H.x - F.x) : 1;
+    let ky = dir.hy !== 0 && Math.abs(H.y - F.y) > 1e-9 ? (u.y - F.y) / (H.y - F.y) : 1;
+    kx = Math.max(0.01, kx);
+    ky = Math.max(0.01, ky);
+    if (keepAspect || (dir.hx !== 0 && dir.hy !== 0 && layer.type === 'group' && !this.editor.features.groupStretch)) {
+      const k = dir.hx === 0 ? ky : dir.hy === 0 ? kx : Math.abs(kx - 1) > Math.abs(ky - 1) ? kx : ky;
+      kx = k;
+      ky = k;
     }
-    k = Math.max(0.01, k);
-    const shiftFrame = { x: F.x * (1 - k), y: F.y * (1 - k) };
-    const shift = applyToVector(rotate(layerFrameRotation(layer)), shiftFrame);
+    // Scaling about the origin moves F to (kx·F.x, ky·F.y); shift the layer back so F stays fixed.
+    const shift = { x: F.x * (1 - kx), y: F.y * (1 - ky) };
     this.editor.store.update(
-      updateLayer<GroupLayer>(d.origDoc, d.id, {
-        scale: Math.round(layer.scale * k * 10000) / 10000,
+      updateLayer(d.origDoc, d.id, (l) => ({
+        ...scaleLayerBox(l, kx, ky),
         x: round(layer.x + shift.x),
         y: round(layer.y + shift.y),
-      }),
+      })),
     );
   }
 

@@ -52,6 +52,8 @@ export interface EditorFeatures {
   maskPreview: boolean;
   /** In monochrome mode, paint the selected layer in a contrasting colour on the canvas (editor only). */
   highlightSelection: boolean;
+  /** Allow corner handles to stretch groups non-uniformly (edge handles always can). */
+  groupStretch: boolean;
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -72,6 +74,7 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   holdDelay: 600,
   maskPreview: true,
   highlightSelection: true,
+  groupStretch: true,
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

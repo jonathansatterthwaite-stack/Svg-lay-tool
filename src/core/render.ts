@@ -310,6 +310,8 @@ function transformString(layer: Layer): string | undefined {
     if (layer.rotation !== 0) parts.push(`rotate(${fmt(layer.rotation)})`);
     if (layer.flipX || layer.flipY) parts.push(`scale(${layer.flipX ? -1 : 1} ${layer.flipY ? -1 : 1})`);
   } else {
+    const k = layer.stretch;
+    if (k && !isIdentity2(k)) parts.push(`matrix(${fmt(k.a)} ${fmt(k.b)} ${fmt(k.c)} ${fmt(k.d)} 0 0)`);
     if (layer.rotation !== 0) parts.push(`rotate(${fmt(layer.rotation)})`);
     if (layer.scale !== 1) parts.push(`scale(${fmt(layer.scale)})`);
   }

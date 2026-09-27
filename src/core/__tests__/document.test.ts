@@ -14,10 +14,13 @@ import {
   normalizeDocument,
   removeLayers,
   reorderLayers,
+  rotateLayer,
   rotateShape,
+  scaleLayerBox,
   scaleShapeBox,
   setShapeBoxSize,
   shapeBox,
+  layerBox,
   ungroupLayer,
   updateLayer,
 } from '../document';
@@ -155,6 +158,53 @@ describe('document ops', () => {
     expect(stretched.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
     expect(stretched.width).toBeCloseTo(400, 6); // intrinsic width is what points up at 90°
     expect(stretched.height).toBeCloseTo(50, 6);
+  });
+
+  it('groups rotate rigidly and scale along canvas axes like shapes', () => {
+    const { doc, a, b } = sample();
+    const res = groupLayers(doc, [a.id, b.id])!;
+    const g0 = findLayer(res.doc, res.groupId) as GroupLayer;
+    const box0 = layerBox(g0)!;
+    // rigid rotation: box corners after == rotated corners before (about the pivot)
+    const g45 = rotateLayer(g0, 45);
+    expect(g45.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    const d45 = updateLayer(res.doc, res.groupId, g45);
+    const before = layerWorldMatrix(res.doc, a.id);
+    const after = layerWorldMatrix(d45, a.id);
+    const p0 = applyToPoint(before, { x: 10, y: 0 });
+    const p1 = applyToPoint(after, { x: 10, y: 0 });
+    // distance from the group's pivot is preserved (rigid)
+    expect(Math.hypot(p1.x - g0.x, p1.y - g0.y)).toBeCloseTo(Math.hypot(p0.x - g0.x, p0.y - g0.y), 6);
+    // box is axis aligned and recomputed
+    const box45 = layerBox(g45)!;
+    expect(box45.width).toBeGreaterThan(box0.width * 0.9);
+    // canvas-axis stretch of the rotated group, then rotate again: look preserved (points keep their distance)
+    const wide = scaleLayerBox(g45, 2, 1);
+    expect(layerBox(wide)!.width).toBeCloseTo(box45.width * 2, 6);
+    expect(layerBox(wide)!.height).toBeCloseTo(box45.height, 6);
+    const dw = updateLayer(res.doc, res.groupId, wide);
+    const turned = rotateLayer(wide, 135);
+    const dt = updateLayer(res.doc, res.groupId, turned);
+    const q = { x: 10, y: 5 };
+    const pw = applyToPoint(layerWorldMatrix(dw, b.id), q);
+    const pt = applyToPoint(layerWorldMatrix(dt, b.id), q);
+    expect(Math.hypot(pt.x - g0.x, pt.y - g0.y)).toBeCloseTo(Math.hypot(pw.x - g0.x, pw.y - g0.y), 6);
+    // uniform stretch folds into the group scale
+    const bigger = scaleLayerBox(g45, 1.5, 1.5);
+    expect(bigger.scale).toBeCloseTo(1.5, 9);
+    expect(bigger.stretch).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    // ungrouping a stretched, rotated group is exact (compare world boxes: a child's
+    // stretch may fold into its intrinsic size, which rescales its local coordinates)
+    const un = ungroupLayer(dt, res.groupId)!;
+    for (const l of [a, b]) {
+      const wb0 = layerWorldBounds(dt, l.id)!;
+      const wb1 = layerWorldBounds(un.doc, l.id)!;
+      for (const k of ['x', 'y', 'width', 'height'] as const) expect(wb1[k]).toBeCloseTo(wb0[k], 5);
+      const c0 = applyToPoint(layerWorldMatrix(dt, l.id), { x: 0, y: 0 });
+      const c1 = applyToPoint(layerWorldMatrix(un.doc, l.id), { x: 0, y: 0 });
+      expect(c1.x).toBeCloseTo(c0.x, 5);
+      expect(c1.y).toBeCloseTo(c0.y, 5);
+    }
   });
 
   it('refuses to group layers from different parents', () => {

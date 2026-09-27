@@ -177,6 +177,8 @@ export interface GroupLayer extends LayerBase {
   type: 'group';
   /** Uniform scale applied to the children. */
   scale: number;
+  /** Canvas-axis stretch applied after rotation (see ShapeLayer.stretch). */
+  stretch: Mat2;
   /** Bottom first. */
   children: Layer[];
 }

@@ -10,9 +10,9 @@ import {
   type Layer,
   type MaskMode,
   type ShapeLayer,
-  rotateShape,
-  setShapeBoxSize,
-  shapeBox,
+  layerBox,
+  rotateLayer,
+  setLayerBoxSize,
   updateLayer,
 } from '../core';
 import { el } from './dom';
@@ -173,15 +173,16 @@ export class PropertiesPanel {
         miniField('Y', numberInput(layer.y, (v) => patch({ y: v }))),
       ]),
     ];
-    if (layer.type === 'shape') {
-      const box = shapeBox(layer);
+    const box = layerBox(layer);
+    if (box) {
       transformChildren.push(
         el('div', { class: 'slt-grid2' }, [
-          miniField('W', numberInput(box.width, (v) => apply<ShapeLayer>((l) => setShapeBoxSize(l, Math.max(1, v), shapeBox(l).height), true), { min: 1 })),
-          miniField('H', numberInput(box.height, (v) => apply<ShapeLayer>((l) => setShapeBoxSize(l, shapeBox(l).width, Math.max(1, v)), true), { min: 1 })),
+          miniField('W', numberInput(box.width, (v) => apply((l) => setLayerBoxSize(l, Math.max(1, v), layerBox(l)?.height ?? 1), true), { min: 1 })),
+          miniField('H', numberInput(box.height, (v) => apply((l) => setLayerBoxSize(l, layerBox(l)?.width ?? 1, Math.max(1, v)), true), { min: 1 })),
         ]),
       );
-    } else {
+    }
+    if (layer.type === 'group') {
       transformChildren.push(
         row('Scale', slider(layer.scale, (v, c) => patch<GroupLayer>({ scale: Math.max(0.01, v) }, c), { min: 0.05, max: 5, step: 0.01 })),
       );
@@ -189,7 +190,7 @@ export class PropertiesPanel {
     transformChildren.push(
       row(
         'Rotation',
-        slider(layer.rotation, (v, c) => apply((l) => (l.type === 'shape' ? rotateShape(l, v) : { ...l, rotation: v }), c), { min: -180, max: 180, step: 1 }),
+        slider(layer.rotation, (v, c) => apply((l) => rotateLayer(l, v), c), { min: -180, max: 180, step: 1 }),
       ),
     );
     if (layer.type === 'shape') {

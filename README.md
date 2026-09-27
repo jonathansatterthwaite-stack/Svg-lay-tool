@@ -127,10 +127,12 @@ and an optional `mask`.
   if rotated again). Use `rotateShape()`, `scaleShapeBox()` and
   `setShapeBoxSize()` rather than editing these fields by hand; an
   axis-aligned stretch at 0° or 90° is folded back into `width`/`height`.
-- **Group layers** hold `children` and a uniform `scale`. Children are
-  positioned relative to the group's origin. When you group a selection the
-  origin is placed at the selection's centre so rotation and scaling behave
-  intuitively.
+- **Group layers** hold `children`, a uniform `scale` and, like shapes, a
+  `rotation` and canvas-axis `stretch`. Children are positioned relative to
+  the group's origin (its pivot). When you group a selection the origin is
+  placed at the selection's centre. Groups rotate rigidly and resize along
+  the canvas axes exactly as shapes do; `rotateLayer()`, `scaleLayerBox()`
+  and `setLayerBoxSize()` work on both kinds.
 
 ### Masks
 
@@ -360,7 +362,7 @@ editing aids. `editor.setPreview(true)` does the same; it emits
 | select / add to selection     | layer strip or Layers panel (Shift+click adds); never from the canvas |
 | select inside a group         | strip corner button, or expand the group in the Layers panel |
 | move                          | hold then drag (direct mode: drag); Shift constrains to an axis; arrow keys nudge |
-| resize                        | corner/edge handles (Shift keeps ratio, Alt from centre) |
+| resize                        | corner/edge handles along the canvas axes (Shift keeps ratio, Alt from centre); `features.groupStretch: false` keeps group corners uniform |
 | rotate                        | handle on the ring around the shape (Shift snaps to 15°); the box is hidden while turning and recalculated on release |
 | group / ungroup               | Ctrl+G / Ctrl+Shift+G                                  |
 | duplicate / delete            | Ctrl+D / Delete                                        |
