@@ -1,4 +1,4 @@
-import { renderDocumentToString } from './render';
+import { renderDocumentToString, type RenderOptions } from './render';
 import type { SvgDocument } from './types';
 
 export interface PngExportOptions {
@@ -8,15 +8,17 @@ export interface PngExportOptions {
   width?: number;
   /** Fill colour behind the image; default keeps transparency. */
   background?: string | null;
+  /** Renderer options (colour mode etc.). */
+  render?: RenderOptions;
 }
 
 /** Standalone SVG markup with XML declaration. */
-export function documentToSvgString(doc: SvgDocument): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n${renderDocumentToString(doc)}`;
+export function documentToSvgString(doc: SvgDocument, render: RenderOptions = {}): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${renderDocumentToString(doc, render)}`;
 }
 
-export function documentToSvgBlob(doc: SvgDocument): Blob {
-  return new Blob([documentToSvgString(doc)], { type: 'image/svg+xml;charset=utf-8' });
+export function documentToSvgBlob(doc: SvgDocument, render: RenderOptions = {}): Blob {
+  return new Blob([documentToSvgString(doc, render)], { type: 'image/svg+xml;charset=utf-8' });
 }
 
 export function documentToJson(doc: SvgDocument, pretty = true): string {
@@ -28,7 +30,7 @@ export async function documentToCanvas(doc: SvgDocument, opts: PngExportOptions 
   const scale = opts.width ? opts.width / doc.width : opts.scale ?? 1;
   const width = Math.max(1, Math.round(doc.width * scale));
   const height = Math.max(1, Math.round(doc.height * scale));
-  const svg = renderDocumentToString(doc);
+  const svg = renderDocumentToString(doc, opts.render ?? {});
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
   try {
     const img = await loadImage(url);

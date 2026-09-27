@@ -82,8 +82,12 @@ export class Toolbar {
     };
     set('undo', ed.store.canUndo);
     set('redo', ed.store.canRedo);
-    set('group', sel.length > 0);
-    set('ungroup', sel.some((l) => l.type === 'group'));
+    const f = ed.features;
+    set('group', sel.length > 0 && f.groups);
+    set('ungroup', sel.some((l) => l.type === 'group') && f.groups);
+    this.buttons.get('group')!.style.display = f.groups ? '' : 'none';
+    this.buttons.get('ungroup')!.style.display = f.groups ? '' : 'none';
+    this.menu.style.display = f.export ? '' : 'none';
     set('duplicate', sel.length > 0);
     set('delete', sel.length > 0);
     for (const k of ['front', 'forward', 'backward', 'back']) set(k, sel.length > 0);

@@ -1,3 +1,4 @@
+import { colorLightness, grayHex, type ColorMode } from '../core';
 import { el, fmtNum, toHex6 } from './dom';
 
 /**
@@ -149,4 +150,42 @@ export function button(
   const b = el('button', { class: `slt-btn ${opts.cls ?? ''}`, type: 'button', title: opts.title ?? '' }, Array.isArray(label) ? label : [label]);
   b.addEventListener('click', onClick);
   return b;
+}
+
+/** Black-to-white slider for grayscale mode; emits gray hex colours. */
+export function grayInput(value: string, onChange: Change<string>): HTMLDivElement {
+  const swatch = el('span', { class: 'slt-swatch', style: { background: grayHex(colorLightness(value)) } });
+  const range = el('input', {
+    class: 'slt-range slt-gray-range',
+    type: 'range',
+    min: '0',
+    max: '255',
+    step: '1',
+    value: String(colorLightness(value)),
+  });
+  const num = numberInput(
+    colorLightness(value),
+    (v, commit) => {
+      range.value = String(v);
+      swatch.style.background = grayHex(v);
+      onChange(grayHex(v), commit);
+    },
+    { min: 0, max: 255, step: 1, digits: 0 },
+  );
+  range.addEventListener('input', () => {
+    const v = parseFloat(range.value);
+    num.value = String(v);
+    swatch.style.background = grayHex(v);
+    onChange(grayHex(v), false);
+  });
+  range.addEventListener('change', () => onChange(grayHex(parseFloat(range.value)), true));
+  range.addEventListener('keydown', (e) => e.stopPropagation());
+  return el('div', { class: 'slt-field slt-grow' }, [swatch, range, num]);
+}
+
+/** Colour control appropriate to the colour mode; `null` in monochrome (nothing to pick). */
+export function colorField(mode: ColorMode, value: string, onChange: Change<string>): HTMLDivElement | null {
+  if (mode === 'monochrome') return null;
+  if (mode === 'grayscale') return grayInput(value, onChange);
+  return colorInput(value, onChange);
 }

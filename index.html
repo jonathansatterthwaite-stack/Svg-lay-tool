@@ -10,8 +10,12 @@
       header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid #2e323b; background: #15171c; }
       header h1 { font-size: 14px; margin: 0; font-weight: 600; }
       header span { color: #8a90a0; font-size: 12px; }
-      header button { margin-left: 0; background: #23262e; color: inherit; border: 1px solid #2e323b; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-      header button + button { margin-left: 0; }
+      header button, header select { background: #23262e; color: inherit; border: 1px solid #2e323b; border-radius: 6px; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+      header label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #8a90a0; }
+      header input[type="color"] { width: 26px; height: 24px; padding: 0; border: 1px solid #2e323b; border-radius: 6px; background: none; }
+      header .controls { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      header .flags { display: flex; gap: 6px; }
+      header .flags label { gap: 2px; }
       #editor { flex: 1; min-height: 0; }
     </style>
   </head>
@@ -19,9 +23,25 @@
     <header>
       <h1>svg-lay-tool</h1>
       <span>Layer-based shape editor demo · everything below is the embeddable component</span>
-      <a href="https://github.com/jonathansatterthwaite-stack/Svg-lay-tool" style="margin-left:auto;color:#8a90a0;font-size:12px">GitHub</a>
-      <button id="theme" type="button">Toggle theme</button>
-      <button id="reset" type="button">Reset sample</button>
+      <div class="controls">
+        <label title="Set as --slt-accent on the page; the editor picks it up">Accent <input id="accent" type="color" value="#4da3ff" /></label>
+        <label>Theme
+          <select id="theme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Auto</option></select>
+        </label>
+        <label>Colours
+          <select id="mode"><option value="full">Full colour</option><option value="grayscale">Grayscale</option><option value="monochrome">Monochrome</option></select>
+        </label>
+        <span class="flags">
+          <label><input id="f-gradients" type="checkbox" checked />Gradients</label>
+          <label><input id="f-strokes" type="checkbox" checked />Strokes</label>
+          <label><input id="f-effects" type="checkbox" checked />Effects</label>
+          <label><input id="f-masks" type="checkbox" checked />Masks</label>
+          <label><input id="f-groups" type="checkbox" checked />Groups</label>
+          <label><input id="f-blendModes" type="checkbox" checked />Blend</label>
+        </span>
+        <button id="reset" type="button">Reset sample</button>
+        <a href="https://github.com/jonathansatterthwaite-stack/Svg-lay-tool" style="color:#8a90a0;font-size:12px">GitHub</a>
+      </div>
     </header>
     <div id="editor">
       <div id="fallback" style="padding: 24px; max-width: 640px; line-height: 1.5; color: #c9cdd6">

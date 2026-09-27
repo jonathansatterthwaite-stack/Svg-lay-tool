@@ -1,5 +1,6 @@
 export * from './types';
 export * from './ids';
+export * from './color';
 export * from './matrix';
 export * from './vnode';
 export * from './shapes';

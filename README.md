@@ -59,7 +59,7 @@ The host element needs a size; the editor fills it (`min-height: 420px`).
   defineSvgLayEditor(); // registers <svg-lay-editor>
 </script>
 
-<svg-lay-editor width="512" height="512" theme="dark" style="height: 600px"></svg-lay-editor>
+<svg-lay-editor width="512" height="512" theme="dark" color-mode="full" style="height: 600px"></svg-lay-editor>
 
 <script type="module">
   const el = document.querySelector('svg-lay-editor');
@@ -182,6 +182,88 @@ Register shapes before creating the editor, or call `editor.refreshLibrary()`
 afterwards. Restrict the palette with `shapes: ['rect', 'ellipse', 'star']` in
 the options.
 
+## Theming
+
+The UI is built from CSS custom properties. Set any of them on the editor's
+host element, or on `:root`, and the editor uses them; change them later
+(for example when your app switches theme) and the editor follows instantly,
+because custom properties inherit into the shadow root.
+
+```css
+:root {
+  --slt-accent: var(--brand-primary);
+  --slt-bg: var(--surface-0);
+  --slt-panel: var(--surface-1);
+  --slt-text: var(--on-surface);
+  --slt-font: inherit;
+}
+```
+
+| token                       | used for                                    |
+| --------------------------- | ------------------------------------------- |
+| `--slt-bg`                  | editor background                           |
+| `--slt-panel`, `--slt-panel-2` | panels, cards, buttons                    |
+| `--slt-border`              | separators and input borders                |
+| `--slt-text`, `--slt-muted` | text                                        |
+| `--slt-accent`, `--slt-accent-text` | selection, handles, primary buttons  |
+| `--slt-input-bg`            | inputs                                      |
+| `--slt-hover`, `--slt-selected` | row hover / selected states             |
+| `--slt-danger`              | destructive hover                           |
+| `--slt-canvas`, `--slt-checker-a`, `--slt-checker-b` | canvas surround and transparency checkerboard |
+| `--slt-radius`, `--slt-font`, `--slt-font-size` | shape of controls and typography |
+
+Anything you do not set falls back to the built-in preset chosen by the
+`theme` option: `'dark'` (default), `'light'`, or `'auto'` to follow the
+operating system. Switch at runtime with `editor.setTheme()`. If you would
+rather pass values from JavaScript, `colors: { accent: '#ff0080', radius: '2px' }`
+in the options (or `editor.setColors()`) applies them inline; `clearColors()`
+removes them again.
+
+## Features and colour modes
+
+The `features` option switches capabilities on or off so the editor matches
+what your app can use. Everything defaults to on.
+
+```ts
+new SvgLayEditor(host, {
+  features: {
+    colorMode: 'monochrome',   // 'full' | 'grayscale' | 'monochrome'
+    monoColor: '#ffffff',      // paint colour in monochrome mode
+    gradients: false,
+    strokes: true,
+    effects: ['blur', 'outline', 'shadow'], // true | false | whitelist
+    masks: true,
+    groups: true,
+    blendModes: false,
+    opacity: true,
+    export: false,             // hide the export/save/open menu
+    canvasSize: false,         // fixed canvas size
+    background: false,         // no background editing
+    shapes: ['rect', 'ellipse', 'star', 'ring'],
+  },
+});
+```
+
+Change them later with `editor.setFeatures({ ... })`; the UI and canvas update
+immediately.
+
+**Colour modes** are meant for apps that colour the image themselves, for
+instance by using hue and saturation for their own purposes:
+
+- `grayscale`: colour pickers become lightness sliders and the renderer
+  converts every colour (fills, gradients, strokes, effect colours, background)
+  to a gray of the same lightness. Effects that would introduce colour (hue,
+  saturation, sepia) are hidden and skipped.
+- `monochrome`: there are no colour controls at all. Everything is painted in
+  `monoColor`, so the result is a shaped alpha image built from shapes, opacity
+  and clip masks that your app can tint. Gradients and blend modes are disabled;
+  only blur, shadow, glow and outline remain (in the mono colour).
+
+The mode is enforced in the renderer, not just the UI: `exportSvg()`,
+`exportPng()` and the canvas all apply it, so a document loaded from a file
+with colours in it still comes out gray or mono. Headless users get the same
+via `renderDocumentToString(doc, { colorMode: 'grayscale' })`.
+
 ## Editor API
 
 ```ts
@@ -191,7 +273,9 @@ new SvgLayEditor(host: HTMLElement, options?: EditorOptions)
 | option              | description                                                                    |
 | ------------------- | ------------------------------------------------------------------------------ |
 | `document`          | initial document (otherwise built from `width`/`height`/`background`)         |
-| `theme`             | `'dark'` (default) or `'light'`                                                |
+| `theme`             | `'dark'` (default), `'light'` or `'auto'`                                      |
+| `colors`            | inline theme token overrides, see Theming                                      |
+| `features`          | capability switches and colour mode, see Features                              |
 | `panels`            | `{ toolbar, library, layers, properties }` booleans to hide UI parts          |
 | `shapes`            | list of shape ids allowed in the library                                       |
 | `shadow`            | `false` to render into light DOM instead of a shadow root                      |
@@ -206,6 +290,7 @@ Methods (all changes are undoable):
   `ungroupSelection()`, `reorderSelection('forward' | 'backward' | 'front' | 'back')`,
   `updateSelected(patch)`, `updateLayer(id, patch)`, `nudgeSelection(dx, dy)`, `undo()`, `redo()`
 - View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`
+- Theme & features: `setTheme(name)`, `setColors(tokens)`, `clearColors()`, `setFeatures(partial)`, `features`
 - Export: `exportSvg()`, `exportPng({ scale | width, background })`, `downloadSvg()`, `downloadPng()`,
   `downloadJson()`, `openJsonFile()`
 - Events: `on('change' | 'selectionchange' | 'viewchange', fn)` returns an unsubscribe function

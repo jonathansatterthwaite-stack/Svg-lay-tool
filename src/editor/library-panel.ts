@@ -8,7 +8,7 @@ export class LibraryPanel {
   private scroll: HTMLDivElement;
   private filter = '';
 
-  constructor(private editor: SvgLayEditor, private allowed?: string[]) {
+  constructor(private editor: SvgLayEditor) {
     const search = el('input', { class: 'slt-input slt-library-search', type: 'search', placeholder: 'Search shapes…' });
     search.addEventListener('input', () => {
       this.filter = search.value.trim().toLowerCase();
@@ -27,7 +27,8 @@ export class LibraryPanel {
 
   private shapes(): ShapeDefinition[] {
     let shapes = listShapes();
-    if (this.allowed) shapes = shapes.filter((s) => this.allowed!.includes(s.id));
+    const allowed = this.editor.features.shapes;
+    if (allowed) shapes = shapes.filter((s) => allowed.includes(s.id));
     if (this.filter) shapes = shapes.filter((s) => s.name.toLowerCase().includes(this.filter) || s.id.includes(this.filter));
     return shapes;
   }

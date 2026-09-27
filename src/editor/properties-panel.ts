@@ -15,7 +15,7 @@ import {
 import { el } from './dom';
 import type { SvgLayEditor } from './editor';
 import { effectsEditor } from './effects-editor';
-import { button, checkbox, colorInput, miniField, numberInput, row, section, select, slider, textInput } from './fields';
+import { button, checkbox, colorField, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
 
 export class PropertiesPanel {
@@ -48,30 +48,41 @@ export class PropertiesPanel {
   private renderDocument(): void {
     const doc = this.editor.document;
     const commitDoc = (patch: Partial<typeof doc>) => this.editor.store.commit((d) => ({ ...d, ...patch }));
+    const f = this.editor.features;
     const bgTransparent = doc.background === null;
-    this.el.appendChild(
-      section('Canvas', [
+    const canvasChildren: (HTMLElement | null)[] = [];
+    if (f.canvasSize) {
+      canvasChildren.push(
         el('div', { class: 'slt-grid2' }, [
           miniField('W', numberInput(doc.width, (v) => commitDoc({ width: Math.max(1, Math.round(v)) }), { min: 1, max: 8192 })),
           miniField('H', numberInput(doc.height, (v) => commitDoc({ height: Math.max(1, Math.round(v)) }), { min: 1, max: 8192 })),
         ]),
-        row(
-          'Background',
-          checkbox('Transparent', bgTransparent, (c) => commitDoc({ background: c ? null : '#1a1a1a' })),
-        ),
-        bgTransparent
-          ? null
-          : row(
-              'Colour',
-              colorInput(doc.background ?? '#000000', (v, commit) => this.applyDoc((d) => ({ ...d, background: v }), commit)),
-            ),
-        el('div', { class: 'slt-hint' }, ['Select a layer to edit it, or pick a shape from the library to add one.']),
-      ]),
-    );
+      );
+    }
+    if (f.background) {
+      canvasChildren.push(
+        row('Background', checkbox('Transparent', bgTransparent, (c) => commitDoc({ background: c ? null : f.colorMode === 'monochrome' ? f.monoColor : '#1a1a1a' }))),
+      );
+      if (!bgTransparent) {
+        const field = colorField(f.colorMode, doc.background ?? '#000000', (v, commit) => this.applyDoc((d) => ({ ...d, background: v }), commit));
+        if (field) canvasChildren.push(row('Colour', field));
+      }
+    }
+    if (f.colorMode !== 'full') {
+      canvasChildren.push(
+        el('div', { class: 'slt-hint' }, [
+          f.colorMode === 'monochrome'
+            ? 'Monochrome mode: every shape is drawn in one colour. Build the image with shapes, opacity and clip masks.'
+            : 'Grayscale mode: colours are picked as lightness values.',
+        ]),
+      );
+    }
+    canvasChildren.push(el('div', { class: 'slt-hint' }, ['Select a layer to edit it, or pick a shape from the library to add one.']));
+    this.el.appendChild(section('Canvas', canvasChildren));
     this.el.appendChild(
       section('Shortcuts', [
         el('div', { class: 'slt-hint' }, ['Drag to move · handles to resize (Shift keeps ratio, Alt from centre) · top handle rotates (Shift snaps 15°)']),
-        el('div', { class: 'slt-hint' }, ['Ctrl+G group · Ctrl+Shift+G ungroup · Ctrl+D duplicate · [ ] reorder · Del delete · Ctrl+Z / Ctrl+Y undo/redo']),
+        el('div', { class: 'slt-hint' }, [`${f.groups ? 'Ctrl+G group · Ctrl+Shift+G ungroup · ' : ''}Ctrl+D duplicate · [ ] reorder · Del delete · Ctrl+Z / Ctrl+Y undo/redo`]),
         el('div', { class: 'slt-hint' }, ['Double-click a group to select a layer inside it. Shift+click adds to the selection.']),
       ]),
     );
@@ -94,24 +105,28 @@ export class PropertiesPanel {
     this.el.appendChild(
       section(`${layers.length} layers selected`, [
         el('div', { class: 'slt-btn-row' }, [
-          button([icon('group'), 'Group'], () => this.editor.groupSelection(), { title: 'Group (Ctrl+G)' }),
+          this.editor.features.groups ? button([icon('group'), 'Group'], () => this.editor.groupSelection(), { title: 'Group (Ctrl+G)' }) : null,
           button([icon('duplicate'), 'Duplicate'], () => this.editor.duplicateSelection()),
           button([icon('trash'), 'Delete'], () => this.editor.deleteSelection(), { cls: 'slt-danger' }),
         ]),
-        row(
-          'Opacity',
-          slider(avg(layers.map((l) => l.opacity)), (v, c) => this.applyAll((l) => ({ ...l, opacity: v }), c), {
-            min: 0,
-            max: 1,
-            step: 0.01,
-          }),
-        ),
-        row(
-          'Blend',
-          select(commonValue(layers.map((l) => l.blendMode)) ?? 'normal', BLEND_MODES.map((b) => ({ value: b, label: b })), (v) =>
-            this.applyAll((l) => ({ ...l, blendMode: v }), true),
-          ),
-        ),
+        this.editor.features.opacity
+          ? row(
+              'Opacity',
+              slider(avg(layers.map((l) => l.opacity)), (v, c) => this.applyAll((l) => ({ ...l, opacity: v }), c), {
+                min: 0,
+                max: 1,
+                step: 0.01,
+              }),
+            )
+          : null,
+        this.editor.features.blendModes
+          ? row(
+              'Blend',
+              select(commonValue(layers.map((l) => l.blendMode)) ?? 'normal', BLEND_MODES.map((b) => ({ value: b, label: b })), (v) =>
+                this.applyAll((l) => ({ ...l, blendMode: v }), true),
+              ),
+            )
+          : null,
         el('div', { class: 'slt-hint' }, ['Drag to move all selected layers together. Resize and rotate work on a single layer or a group.']),
       ]),
     );
@@ -130,6 +145,7 @@ export class PropertiesPanel {
 
   private renderLayer(layer: Layer): void {
     const id = layer.id;
+    const f = this.editor.features;
     const apply = <T extends Layer>(fn: (l: T) => T, commit = true) => this.applyDoc((d) => updateLayer<T>(d, id, fn), commit);
     const patch = <T extends Layer>(p: Partial<T>, commit = true) => apply<T>((l) => ({ ...l, ...p }), commit);
 
@@ -164,12 +180,15 @@ export class PropertiesPanel {
         ]),
       );
     }
+    if (f.opacity) {
+      transformChildren.push(row('Opacity', slider(layer.opacity, (v, c) => patch({ opacity: v }, c), { min: 0, max: 1, step: 0.01 })));
+    }
+    if (f.blendModes) {
+      transformChildren.push(
+        row('Blend', select<BlendMode>(layer.blendMode, BLEND_MODES.map((b) => ({ value: b, label: b })), (v) => patch({ blendMode: v }))),
+      );
+    }
     transformChildren.push(
-      row('Opacity', slider(layer.opacity, (v, c) => patch({ opacity: v }, c), { min: 0, max: 1, step: 0.01 })),
-      row(
-        'Blend',
-        select<BlendMode>(layer.blendMode, BLEND_MODES.map((b) => ({ value: b, label: b })), (v) => patch({ blendMode: v })),
-      ),
       el('div', { class: 'slt-btn-row' }, [
         checkbox('Visible', layer.visible, (c) => patch({ visible: c })),
         checkbox('Locked', layer.locked, (c) => patch({ locked: c })),
@@ -207,15 +226,16 @@ export class PropertiesPanel {
       }
       this.el.appendChild(section('Shape', shapeChildren));
       this.el.appendChild(section('Fill', this.fillFields(layer, apply)));
-      this.el.appendChild(section('Stroke', this.strokeFields(layer, apply)));
+      if (f.strokes) this.el.appendChild(section('Stroke', this.strokeFields(layer, apply)));
     }
 
     // Effects
-    this.el.appendChild(
-      section('Effects', [effectsEditor(layer.effects, (effects, c) => patch({ effects }, c))]),
-    );
+    if (f.effects !== false) {
+      this.el.appendChild(section('Effects', [effectsEditor(layer.effects, (effects, c) => patch({ effects }, c), f)]));
+    }
 
     // Mask
+    if (!f.masks) return;
     const maskChildren: HTMLElement[] = [
       checkbox('Use as mask for layers below', !!layer.mask, (c) => patch({ mask: c ? createMaskSettings() : null })),
     ];
@@ -241,41 +261,40 @@ export class PropertiesPanel {
             ? 'The layers below stay visible; inside this shape the effects below are applied to them.'
             : 'Effects below are applied to the clipped result. Add a Blur on the layer itself for a soft edge.',
         ]),
-        el('div', { class: 'slt-section-head' }, ['Effects on layers below']),
-        effectsEditor(mask.effects, (effects, c) => setMask({ effects }, c)),
       );
+      if (f.effects !== false) {
+        maskChildren.push(
+          el('div', { class: 'slt-section-head' }, ['Effects on layers below']),
+          effectsEditor(mask.effects, (effects, c) => setMask({ effects }, c), f),
+        );
+      }
     }
     this.el.appendChild(section('Mask', maskChildren));
   }
 
   private fillFields(layer: ShapeLayer, apply: <T extends Layer>(fn: (l: T) => T, commit?: boolean) => void): HTMLElement[] {
     const fill = layer.fill;
+    const features = this.editor.features;
+    const mode = features.colorMode;
     const setFill = (f: Fill, commit = true) => apply<ShapeLayer>((l) => ({ ...l, fill: f }), commit);
-    const out: HTMLElement[] = [
-      row(
-        'Type',
-        select<Fill['type']>(
-          fill.type,
-          [
-            { value: 'solid', label: 'Solid' },
-            { value: 'linear', label: 'Linear gradient' },
-            { value: 'radial', label: 'Radial gradient' },
-            { value: 'none', label: 'None' },
-          ],
-          (v) => setFill(convertFill(fill, v)),
-        ),
-      ),
-    ];
+    const types: { value: Fill['type']; label: string }[] = [{ value: 'solid', label: mode === 'monochrome' ? 'Filled' : 'Solid' }];
+    if (features.gradients) {
+      types.push({ value: 'linear', label: 'Linear gradient' }, { value: 'radial', label: 'Radial gradient' });
+    }
+    types.push({ value: 'none', label: 'None' });
+    // A gradient loaded from a file while gradients are disabled still shows so it can be changed.
+    if (!types.some((t) => t.value === fill.type)) types.push({ value: fill.type, label: `${fill.type} gradient` });
+    const out: HTMLElement[] = [row('Type', select<Fill['type']>(fill.type, types, (v) => setFill(convertFill(fill, v))))];
     if (fill.type === 'solid') {
-      out.push(row('Colour', colorInput(fill.color, (v, c) => setFill({ type: 'solid', color: v }, c))));
+      const field = colorField(mode, fill.color, (v, c) => setFill({ type: 'solid', color: v }, c));
+      if (field) out.push(row('Colour', field));
     } else if (fill.type === 'linear' || fill.type === 'radial') {
       fill.stops.forEach((stop, i) => {
         const setStop = (p: Partial<typeof stop>, c: boolean) =>
           setFill({ ...fill, stops: fill.stops.map((s, j) => (j === i ? { ...s, ...p } : s)) }, c);
-        out.push(
-          row(`Stop ${i + 1}`, colorInput(stop.color, (v, c) => setStop({ color: v }, c))),
-          row('Position', slider(stop.offset, (v, c) => setStop({ offset: v }, c), { min: 0, max: 1, step: 0.01 })),
-        );
+        const field = colorField(mode, stop.color, (v, c) => setStop({ color: v }, c));
+        if (field) out.push(row(`Stop ${i + 1}`, field));
+        out.push(row('Position', slider(stop.offset, (v, c) => setStop({ offset: v }, c), { min: 0, max: 1, step: 0.01 })));
       });
       out.push(
         el('div', { class: 'slt-btn-row' }, [
@@ -299,10 +318,9 @@ export class PropertiesPanel {
       row('', checkbox('Enable stroke', !!stroke, (c) => setStroke(c ? { color: '#ffffff', width: 4 } : null))),
     ];
     if (stroke) {
-      out.push(
-        row('Colour', colorInput(stroke.color, (v, c) => setStroke({ ...stroke, color: v }, c))),
-        row('Width', slider(stroke.width, (v, c) => setStroke({ ...stroke, width: v }, c), { min: 0, max: 100, step: 0.5 })),
-      );
+      const field = colorField(this.editor.features.colorMode, stroke.color, (v, c) => setStroke({ ...stroke, color: v }, c));
+      if (field) out.push(row('Colour', field));
+      out.push(row('Width', slider(stroke.width, (v, c) => setStroke({ ...stroke, width: v }, c), { min: 0, max: 100, step: 0.5 })));
     }
     return out;
   }

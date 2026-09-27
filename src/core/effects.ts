@@ -1,6 +1,6 @@
 import { createId } from './ids';
 import { fmt } from './matrix';
-import type { Effect, EffectType, Rect } from './types';
+import type { ColorMode, Effect, EffectType, Rect } from './types';
 import { h, type VNode } from './vnode';
 
 export interface EffectParamDef {
@@ -111,6 +111,23 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
 };
 
 export const EFFECT_TYPES = Object.keys(EFFECT_DEFS) as EffectType[];
+
+/** Effects that make sense (and cannot introduce colour) in each colour mode. */
+export const EFFECTS_BY_COLOR_MODE: Record<ColorMode, readonly EffectType[]> = {
+  full: EFFECT_TYPES,
+  grayscale: ['blur', 'brightness', 'contrast', 'invert', 'tint', 'shadow', 'glow', 'outline'],
+  monochrome: ['blur', 'shadow', 'glow', 'outline'],
+};
+
+export function effectAllowedIn(type: EffectType, mode: ColorMode): boolean {
+  return EFFECTS_BY_COLOR_MODE[mode].includes(type);
+}
+
+/** Drop effects that a colour mode does not support. */
+export function effectsForColorMode(effects: Effect[], mode: ColorMode): Effect[] {
+  if (mode === 'full') return effects;
+  return effects.filter((e) => effectAllowedIn(e.type, mode));
+}
 
 export function createEffect(type: EffectType, overrides: Record<string, unknown> = {}): Effect {
   const def = EFFECT_DEFS[type];

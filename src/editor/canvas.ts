@@ -84,9 +84,9 @@ export class CanvasView {
   constructor(private editor: SvgLayEditor) {
     this.idPrefix = `slt${instanceCounter++}-`;
     this.pattern = svgEl('pattern', { id: `${this.idPrefix}checker`, patternUnits: 'userSpaceOnUse', width: 24, height: 24 }, [
-      svgEl('rect', { width: 24, height: 24, fill: 'var(--slt-checker-b)' }),
-      svgEl('rect', { width: 12, height: 12, fill: 'var(--slt-checker-a)' }),
-      svgEl('rect', { x: 12, y: 12, width: 12, height: 12, fill: 'var(--slt-checker-a)' }),
+      svgEl('rect', { width: 24, height: 24, fill: 'var(--_slt-checker-b)' }),
+      svgEl('rect', { width: 12, height: 12, fill: 'var(--_slt-checker-a)' }),
+      svgEl('rect', { x: 12, y: 12, width: 12, height: 12, fill: 'var(--_slt-checker-a)' }),
     ]);
     this.clipRect = svgEl('rect', { x: 0, y: 0, width: 1, height: 1 });
     this.staticDefs = svgEl('defs', {}, [this.pattern, svgEl('clipPath', { id: `${this.idPrefix}clip` }, [this.clipRect])]);
@@ -226,7 +226,7 @@ export class CanvasView {
       r.setAttribute('height', String(doc.height));
     }
 
-    const { defs, body } = renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true });
+    const { defs, body } = renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.renderOptions() });
     clear(this.docDefs);
     for (const d of defs) this.docDefs.appendChild(vnodeToDom(d));
     clear(this.docG);

@@ -29,14 +29,17 @@ import {
   getShape,
   type Layer,
   type PngExportOptions,
+  type RenderOptions,
   type ReorderDirection,
   type SvgDocument,
 } from '../core';
+import { grayHex } from '../core/color';
 import { CanvasView } from './canvas';
 import { el, isEditableTarget } from './dom';
 import { LayersPanel } from './layers-panel';
 import { LibraryPanel } from './library-panel';
 import { PropertiesPanel } from './properties-panel';
+import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, type ThemeName } from './features';
 import { EDITOR_STYLES } from './styles';
 import { Toolbar } from './toolbar';
 
@@ -46,10 +49,18 @@ export interface EditorOptions {
   width?: number;
   height?: number;
   background?: string | null;
-  theme?: 'dark' | 'light';
+  /** Colour preset: `dark` (default), `light`, or `auto` to follow the OS setting. */
+  theme?: ThemeName;
+  /**
+   * Token overrides applied inline (`--slt-accent` etc.). Alternatively set the
+   * same custom properties in the host page's CSS; they inherit into the editor.
+   */
+  colors?: ThemeColors;
+  /** Feature switches: colour mode, gradients, masks, groups, export ... */
+  features?: Partial<EditorFeatures>;
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
-  /** Restrict the shape library to these shape ids. */
+  /** Restrict the shape library to these shape ids (same as `features.shapes`). */
   shapes?: string[];
   /** Render into a shadow root (default true) so host CSS cannot leak in. */
   shadow?: boolean;
@@ -80,6 +91,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   readonly root: ShadowRoot | HTMLElement;
   readonly store: DocumentStore;
   readonly options: EditorOptions;
+  features: EditorFeatures;
 
   selection: string[] = [];
   hoverId: string | null = null;
@@ -102,6 +114,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       options.document ??
       createDocument({ width: options.width, height: options.height, background: options.background });
     this.store = new DocumentStore(doc);
+    this.features = resolveFeatures({ ...(options.features ?? {}), ...(options.shapes ? { shapes: options.shapes } : {}) });
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -110,6 +123,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     const style = document.createElement('style');
     style.textContent = EDITOR_STYLES;
     this.rootEl = el('div', { class: 'slt-root', dataset: { theme: options.theme ?? 'dark' } });
+    if (options.colors) this.setColors(options.colors);
     const panels = { toolbar: true, library: true, layers: true, properties: true, ...(options.panels ?? {}) };
     if (!panels.toolbar) this.rootEl.dataset.noToolbar = '';
     if (!panels.library) this.rootEl.dataset.noLibrary = '';
@@ -120,7 +134,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       this.rootEl.appendChild(this.toolbar.el);
     }
     if (panels.library) {
-      this.library = new LibraryPanel(this, options.shapes);
+      this.library = new LibraryPanel(this);
       this.rootEl.appendChild(this.library.el);
     }
     this.canvas = new CanvasView(this);
@@ -287,6 +301,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   }
 
   private nextColor(i: number): string {
+    const mode = this.features.colorMode;
+    if (mode === 'monochrome') return this.features.monoColor;
+    if (mode === 'grayscale') return grayHex([232, 160, 96, 200, 128, 64][i % 6]);
     const palette = ['#e8e8e8', '#ff5d5d', '#4da3ff', '#ffc857', '#5ad27d', '#c77dff', '#ff8f3f', '#59d7e8'];
     return palette[i % palette.length];
   }
@@ -312,7 +329,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   groupSelection(): void {
     const ids = this.topLevelSelection();
-    if (!ids.length) return;
+    if (!ids.length || !this.features.groups) return;
     let groupId: string | null = null;
     this.store.commit((d) => {
       const res = groupLayers(d, ids);
@@ -325,7 +342,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   ungroupSelection(): void {
     const groups = this.selectedLayers().filter((l) => l.type === 'group');
-    if (!groups.length) return;
+    if (!groups.length || !this.features.groups) return;
     let ids: string[] = [];
     this.store.commit((d) => {
       let out = d;
@@ -402,16 +419,17 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   // -------------------------------------------------------------------------
   // Export
 
+  /** Standalone SVG markup; the editor's colour mode is applied. */
   exportSvg(): string {
-    return documentToSvgString(this.store.doc);
+    return documentToSvgString(this.store.doc, this.renderOptions());
   }
 
   exportPng(opts: PngExportOptions = {}): Promise<Blob> {
-    return documentToPngBlob(this.store.doc, opts);
+    return documentToPngBlob(this.store.doc, { ...opts, render: { ...this.renderOptions(), ...(opts.render ?? {}) } });
   }
 
   downloadSvg(filename = 'image.svg'): void {
-    downloadBlob(documentToSvgBlob(this.store.doc), filename);
+    downloadBlob(documentToSvgBlob(this.store.doc, this.renderOptions()), filename);
   }
 
   async downloadPng(filename = 'image.png', opts: PngExportOptions = {}): Promise<void> {
@@ -441,6 +459,44 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       };
       input.click();
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Theme & features
+
+  /** Switch the colour preset. */
+  setTheme(theme: ThemeName): void {
+    this.rootEl.dataset.theme = theme;
+  }
+
+  get theme(): ThemeName {
+    return (this.rootEl.dataset.theme as ThemeName) ?? 'dark';
+  }
+
+  /** Override theme tokens inline; pass `null` values (or call `clearColors`) to fall back to host CSS. */
+  setColors(colors: ThemeColors): void {
+    for (const [token, value] of Object.entries(colors)) {
+      if (!(THEME_TOKENS as readonly string[]).includes(token)) continue;
+      if (value) this.rootEl.style.setProperty(`--slt-${token}`, value);
+      else this.rootEl.style.removeProperty(`--slt-${token}`);
+    }
+  }
+
+  clearColors(): void {
+    for (const token of THEME_TOKENS) this.rootEl.style.removeProperty(`--slt-${token}`);
+  }
+
+  /** Change feature switches at runtime; the UI and rendering update immediately. */
+  setFeatures(partial: Partial<EditorFeatures>): void {
+    this.features = resolveFeatures({ ...this.features, ...partial });
+    this.library?.refresh();
+    this.refresh(false);
+  }
+
+  /** Renderer options that enforce the current colour mode (used for canvas and export). */
+  renderOptions(): RenderOptions {
+    const f = this.features;
+    return f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
   }
 
   // -------------------------------------------------------------------------

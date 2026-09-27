@@ -1,8 +1,9 @@
-import { buildFilter, effectSpill } from './effects';
+import { recolor, toGray } from './color';
+import { buildFilter, effectSpill, effectsForColorMode } from './effects';
 import { childrenBounds, layerLocalBounds, layerLocalMatrix } from './document';
 import { expandRect, fmt, invert, type Mat, multiply, IDENTITY, transformRect } from './matrix';
 import { getShape, shapePath } from './shapes';
-import type { Fill, Layer, Rect, ShapeLayer, SvgDocument } from './types';
+import type { ColorMode, Effect, Fill, Layer, Rect, ShapeLayer, SvgDocument } from './types';
 import { cloneVNode, h, vnodeToDom, vnodeToString, type VNode } from './vnode';
 
 export interface RenderOptions {
@@ -12,6 +13,14 @@ export interface RenderOptions {
   interactive?: boolean;
   /** Draw the document background (default true). */
   background?: boolean;
+  /**
+   * Restrict output colours: `grayscale` converts every colour to a gray of
+   * the same lightness; `monochrome` paints everything in `monoColor`.
+   * Effects that would introduce colour are skipped. Default `full`.
+   */
+  colorMode?: ColorMode;
+  /** The single colour used in `monochrome` mode (default white). */
+  monoColor?: string;
 }
 
 /** Paint overrides used when drawing a layer as mask content or as an editor ghost. */
@@ -29,6 +38,22 @@ interface Ctx {
   counter: number;
   /** World matrix of the coordinate frame currently being rendered into. */
   frame: Mat;
+  colorMode: ColorMode;
+  monoColor: string;
+}
+
+/** Apply the colour mode to a single paint colour. */
+export function applyColorMode(color: string, mode: ColorMode, monoColor = '#ffffff'): string {
+  if (mode === 'grayscale') return toGray(color);
+  if (mode === 'monochrome') return recolor(color, monoColor);
+  return color;
+}
+
+function modeEffects(effects: Effect[], ctx: Ctx): Effect[] {
+  if (ctx.colorMode === 'full') return effects;
+  return effectsForColorMode(effects, ctx.colorMode).map((e) =>
+    'color' in e ? ({ ...e, color: applyColorMode(e.color, ctx.colorMode, ctx.monoColor) } as Effect) : e,
+  );
 }
 
 function nextId(ctx: Ctx, kind: string): string {
@@ -59,10 +84,13 @@ export function renderDocumentParts(doc: SvgDocument, opts: RenderOptions = {}):
     interactive: !!opts.interactive,
     counter: 0,
     frame: IDENTITY,
+    colorMode: opts.colorMode ?? 'full',
+    monoColor: opts.monoColor ?? '#ffffff',
   };
   const body: VNode[] = [];
   if (doc.background && opts.background !== false) {
-    body.push(h('rect', { x: 0, y: 0, width: fmt(doc.width), height: fmt(doc.height), fill: doc.background }));
+    const fill = applyColorMode(doc.background, ctx.colorMode, ctx.monoColor);
+    body.push(h('rect', { x: 0, y: 0, width: fmt(doc.width), height: fmt(doc.height), fill }));
   }
   body.push(...renderChildren(doc.layers, ctx));
   return { defs: ctx.defs, body };
@@ -142,9 +170,10 @@ function applyMask(maskLayer: Layer, acc: VNode[], below: Layer[], ctx: Ctx): VN
   );
 
   let filterUrl: string | undefined;
-  if (settings.effects.length) {
+  const maskEffects = modeEffects(settings.effects, ctx);
+  if (maskEffects.length) {
     const contentBounds = childrenBounds(below) ?? region;
-    const filter = buildFilter(nextId(ctx, 'f'), settings.effects, contentBounds);
+    const filter = buildFilter(nextId(ctx, 'f'), maskEffects, contentBounds);
     if (filter) {
       ctx.defs.push(filter);
       filterUrl = `url(#${filter.attrs.id})`;
@@ -172,9 +201,10 @@ function renderLayer(layer: Layer, ctx: Ctx, override?: PaintOverride): VNode {
   const styles: string[] = [];
   if (layer.opacity < 1) attrs.opacity = fmt(layer.opacity);
   if (layer.blendMode !== 'normal' && !override) styles.push(`mix-blend-mode:${layer.blendMode}`);
-  if (layer.effects.length && !override?.ghost) {
+  const effects = override?.ghost ? [] : modeEffects(layer.effects, ctx);
+  if (effects.length) {
     const local = layerLocalBounds(layer) ?? { x: 0, y: 0, width: 0, height: 0 };
-    const filter = buildFilter(nextId(ctx, 'f'), layer.effects, local);
+    const filter = buildFilter(nextId(ctx, 'f'), effects, local);
     if (filter) {
       ctx.defs.push(filter);
       attrs.filter = `url(#${filter.attrs.id})`;
@@ -267,7 +297,7 @@ function renderShape(
   } else {
     attrs.fill = fillValue(layer.fill, ctx);
     if (layer.stroke && layer.stroke.width > 0) {
-      attrs.stroke = layer.stroke.color;
+      attrs.stroke = applyColorMode(layer.stroke.color, ctx.colorMode, ctx.monoColor);
       attrs['stroke-width'] = fmt(layer.stroke.width);
       attrs['stroke-linejoin'] = 'round';
     }
@@ -276,11 +306,16 @@ function renderShape(
 }
 
 function fillValue(fill: Fill, ctx: Ctx): string {
+  const col = (c: string) => applyColorMode(c, ctx.colorMode, ctx.monoColor);
+  if (ctx.colorMode === 'monochrome' && fill.type !== 'none') {
+    // A gradient between identical colours is a solid; keep alpha of the first stop.
+    return col(fill.type === 'solid' ? fill.color : fill.stops[0]?.color ?? ctx.monoColor);
+  }
   switch (fill.type) {
     case 'none':
       return 'none';
     case 'solid':
-      return fill.color;
+      return col(fill.color);
     case 'linear': {
       const id = nextId(ctx, 'g');
       const a = ((fill.angle - 90) * Math.PI) / 180;
@@ -291,7 +326,7 @@ function fillValue(fill: Fill, ctx: Ctx): string {
         h(
           'linearGradient',
           { id, x1: fmt(0.5 - dx), y1: fmt(0.5 - dy), x2: fmt(0.5 + dx), y2: fmt(0.5 + dy) },
-          fill.stops.map((s) => h('stop', { offset: fmt(s.offset), 'stop-color': s.color })),
+          fill.stops.map((s) => h('stop', { offset: fmt(s.offset), 'stop-color': col(s.color) })),
         ),
       );
       return `url(#${id})`;
@@ -302,7 +337,7 @@ function fillValue(fill: Fill, ctx: Ctx): string {
         h(
           'radialGradient',
           { id },
-          fill.stops.map((s) => h('stop', { offset: fmt(s.offset), 'stop-color': s.color })),
+          fill.stops.map((s) => h('stop', { offset: fmt(s.offset), 'stop-color': col(s.color) })),
         ),
       );
       return `url(#${id})`;

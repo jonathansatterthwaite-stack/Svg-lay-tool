@@ -10,7 +10,7 @@ import { SvgLayEditor, type EditorOptions } from './editor';
  * Events: `change` (detail: document), `selectionchange` (detail: ids).
  */
 export class SvgLayEditorElement extends HTMLElement {
-  static observedAttributes = ['theme'];
+  static observedAttributes = ['theme', 'color-mode'];
 
   editor: SvgLayEditor | null = null;
   private pendingDocument: SvgDocument | null = null;
@@ -28,8 +28,12 @@ export class SvgLayEditorElement extends HTMLElement {
       width: num('width'),
       height: num('height'),
       background: this.getAttribute('background'),
-      theme: (this.getAttribute('theme') as 'dark' | 'light' | null) ?? undefined,
+      theme: (this.getAttribute('theme') as 'dark' | 'light' | 'auto' | null) ?? undefined,
       ...this.options,
+      features: {
+        ...(this.getAttribute('color-mode') ? { colorMode: this.getAttribute('color-mode') as 'full' | 'grayscale' | 'monochrome' } : {}),
+        ...(this.options.features ?? {}),
+      },
       document: this.pendingDocument ?? this.options.document,
     });
     this.pendingDocument = null;
@@ -45,10 +49,9 @@ export class SvgLayEditorElement extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null): void {
-    if (name === 'theme' && this.editor) {
-      const root = (this.editor.root as ShadowRoot).querySelector?.('.slt-root') as HTMLElement | null;
-      if (root) root.dataset.theme = value ?? 'dark';
-    }
+    if (!this.editor) return;
+    if (name === 'theme') this.editor.setTheme((value as 'dark' | 'light' | 'auto' | null) ?? 'dark');
+    if (name === 'color-mode') this.editor.setFeatures({ colorMode: (value as 'full' | 'grayscale' | 'monochrome' | null) ?? 'full' });
   }
 
   get document(): SvgDocument | null {

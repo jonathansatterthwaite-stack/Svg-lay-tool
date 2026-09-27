@@ -98,6 +98,13 @@ export type Effect = EffectBase &
 export type EffectType = Effect['type'];
 
 /**
+ * Output colour restriction. `grayscale` keeps lightness only; `monochrome`
+ * paints everything in one colour (shapes become a coloured alpha mask that a
+ * host app can tint however it likes).
+ */
+export type ColorMode = 'full' | 'grayscale' | 'monochrome';
+
+/**
  * How a mask layer affects the layers below it (within the same parent):
  * - `clip`: layers below are only visible inside the mask shape.
  * - `clip-inverse`: layers below are only visible outside the mask shape.
