@@ -5,6 +5,7 @@ import {
   invert,
   layerFrameBounds,
   layerFrameMatrix,
+  layerFrameRotation,
   layerWorldBounds,
   locateLayer,
   multiply,
@@ -636,7 +637,7 @@ export class CanvasView {
       w = Math.max(1, w);
       h = Math.max(1, h);
       const newCentre = { x: (Math.min(nl, nr) + Math.max(nl, nr)) / 2, y: (Math.min(nt, nb) + Math.max(nt, nb)) / 2 };
-      const shift = applyToVector(rotate(layer.rotation), { x: newCentre.x - centre.x, y: newCentre.y - centre.y });
+      const shift = applyToVector(rotate(layerFrameRotation(layer)), { x: newCentre.x - centre.x, y: newCentre.y - centre.y });
       this.editor.store.update(
         updateLayer(d.origDoc, d.id, {
           width: round(w),
@@ -665,7 +666,7 @@ export class CanvasView {
     }
     k = Math.max(0.01, k);
     const shiftFrame = { x: F.x * (1 - k), y: F.y * (1 - k) };
-    const shift = applyToVector(rotate(layer.rotation), shiftFrame);
+    const shift = applyToVector(rotate(layerFrameRotation(layer)), shiftFrame);
     this.editor.store.update(
       updateLayer<GroupLayer>(d.origDoc, d.id, {
         scale: Math.round(layer.scale * k * 10000) / 10000,

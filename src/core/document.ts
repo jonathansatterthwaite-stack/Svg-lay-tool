@@ -333,10 +333,44 @@ function nextCopyName(name: string): string {
 // ---------------------------------------------------------------------------
 // Geometry
 
+/**
+ * How a shape fills its box. A shape layer's `width`/`height` is its box in
+ * the parent's axes; `rotation` turns the geometry inside that box and the
+ * result is stretched to fill it. The geometry is generated at the "base"
+ * size, which equals the box for rotations of 0° and 90° (so geometry such
+ * as corner radii is exact there) and blends between them otherwise.
+ */
+export interface ShapeGeometry {
+  /** Size the path is generated at (pre-rotation). */
+  baseWidth: number;
+  baseHeight: number;
+  /** Stretch applied after rotation so the rotated base fills width × height. */
+  scaleX: number;
+  scaleY: number;
+}
+
+export function shapeGeometry(layer: ShapeLayer): ShapeGeometry {
+  const r = (layer.rotation * Math.PI) / 180;
+  const c = Math.abs(Math.cos(r));
+  const s = Math.abs(Math.sin(r));
+  const baseWidth = layer.width * c + layer.height * s;
+  const baseHeight = layer.width * s + layer.height * c;
+  const bboxW = baseWidth * c + baseHeight * s;
+  const bboxH = baseWidth * s + baseHeight * c;
+  return {
+    baseWidth,
+    baseHeight,
+    scaleX: bboxW > 1e-9 ? layer.width / bboxW : 1,
+    scaleY: bboxH > 1e-9 ? layer.height / bboxH : 1,
+  };
+}
+
 export function layerLocalMatrix(layer: Layer): Mat {
   if (layer.type === 'shape') {
+    const g = shapeGeometry(layer);
     return compose(
       translate(layer.x, layer.y),
+      scale(g.scaleX, g.scaleY),
       rotate(layer.rotation),
       scale(layer.flipX ? -1 : 1, layer.flipY ? -1 : 1),
     );
@@ -344,15 +378,26 @@ export function layerLocalMatrix(layer: Layer): Mat {
   return compose(translate(layer.x, layer.y), rotate(layer.rotation), scale(layer.scale, layer.scale));
 }
 
-/** Translation + rotation only; the frame in which the layer's box is axis aligned. */
+/**
+ * The frame in which the layer's handle box is axis aligned: for shapes the
+ * parent's axes (translation only, since scaling is done in canvas axes);
+ * for groups translation + rotation.
+ */
 export function layerFrameMatrix(layer: Layer): Mat {
+  if (layer.type === 'shape') return translate(layer.x, layer.y);
   return multiply(translate(layer.x, layer.y), rotate(layer.rotation));
+}
+
+/** Rotation of the handle frame relative to the parent (0 for shapes). */
+export function layerFrameRotation(layer: Layer): number {
+  return layer.type === 'shape' ? 0 : layer.rotation;
 }
 
 /** Bounds in the layer's own (pre-transform) coordinate system. */
 export function layerLocalBounds(layer: Layer): Rect | null {
   if (layer.type === 'shape') {
-    return { x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height };
+    const g = shapeGeometry(layer);
+    return { x: -g.baseWidth / 2, y: -g.baseHeight / 2, width: g.baseWidth, height: g.baseHeight };
   }
   return childrenBounds(layer.children);
 }
@@ -374,9 +419,11 @@ export function layerBoundsInParent(layer: Layer): Rect | null {
  * frame, scale/flip baked into the rectangle). Handles are drawn on this box.
  */
 export function layerFrameBounds(layer: Layer): Rect | null {
+  if (layer.type === 'shape') {
+    return { x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height };
+  }
   const local = layerLocalBounds(layer);
   if (!local) return null;
-  if (layer.type === 'shape') return local;
   return transformRect(local, scale(layer.scale, layer.scale));
 }
 
@@ -440,7 +487,12 @@ export function groupLayers(
   return { doc: out, groupId: group.id };
 }
 
-/** Dissolve a group, keeping children where they appear. Returns the children's ids. */
+/**
+ * Dissolve a group, keeping children where they appear. Returns the children's
+ * ids. Exact for unrotated groups; a rotated group's rotation is folded into
+ * each child's own rotation, which for shapes (whose box stays axis aligned)
+ * is an approximation.
+ */
 export function ungroupLayer(doc: SvgDocument, groupId: string): { doc: SvgDocument; ids: string[] } | null {
   const loc = locateLayer(doc, groupId);
   if (!loc || loc.layer.type !== 'group') return null;

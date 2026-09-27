@@ -119,7 +119,11 @@ and an optional `mask`.
 - **Shape layers** reference a shape from the library by id, with `width`,
   `height`, `flipX`/`flipY`, shape `params` (corner radius, star points …), a
   `fill` (solid, linear or radial gradient, or none) and an optional `stroke`.
-  The origin is the centre of the shape.
+  The origin is the centre of the shape. `width` × `height` is the layer's box
+  in the parent's axes; `rotation` turns the geometry *inside* that box and
+  stretches it to fill, so resizing a rotated shape still works along the
+  canvas axes (a square rotated 45° and widened becomes a wide diamond). At
+  0° and 90° the geometry is generated at the exact box size.
 - **Group layers** hold `children` and a uniform `scale`. Children are
   positioned relative to the group's origin. When you group a selection the
   origin is placed at the selection's centre so rotation and scaling behave

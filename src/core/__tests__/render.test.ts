@@ -21,7 +21,9 @@ describe('renderer', () => {
     const svg = renderDocumentToString(doc);
     expect(svg).toContain('viewBox="0 0 200 100"');
     expect(svg).toContain('fill="#123456"');
-    expect(svg).toContain('transform="translate(50 50) rotate(10)"');
+    expect(svg).toMatch(/transform="translate\(50 50\) scale\([\d.]+ [\d.]+\) rotate\(10\)"/);
+    const plain = renderDocumentToString(insertLayer(createDocument(), createShapeLayer({ x: 5, y: 6, rotation: 90 })));
+    expect(plain).toContain('transform="translate(5 6) rotate(90)"'); // no stretch at 90°
     expect(svg).toContain('<path');
     expect(svg).not.toContain('data-layer-id');
   });
