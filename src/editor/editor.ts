@@ -33,7 +33,7 @@ import {
   type ReorderDirection,
   type SvgDocument,
 } from '../core';
-import { grayHex } from '../core/color';
+import { grayHex, luminance, parseColor } from '../core/color';
 import { CanvasView } from './canvas';
 import { el, isEditableTarget } from './dom';
 import { icon } from './icons';
@@ -610,6 +610,29 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   renderOptions(): RenderOptions {
     const f = this.features;
     return f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
+  }
+
+  /** Extra, editor-only render options for the canvas (never applied to exports). */
+  canvasRenderOptions(): RenderOptions {
+    const f = this.features;
+    const out: RenderOptions = { ...this.renderOptions(), maskPreviewOpacity: f.maskPreview ? 0.25 : 0 };
+    if (f.colorMode === 'monochrome' && f.highlightSelection && this.selection.length) {
+      out.highlightIds = this.selection;
+      out.highlightColor = this.contrastColor(f.monoColor);
+    }
+    return out;
+  }
+
+  /** A saturated colour that reads against the monochrome paint: the theme accent, unless that is too close. */
+  private contrastColor(mono: string): string {
+    const accent = getComputedStyle(this.rootEl).getPropertyValue('--_slt-accent').trim() || '#4da3ff';
+    const a = parseColor(accent);
+    const m = parseColor(mono);
+    if (a && m) {
+      const dist = Math.hypot(a.r - m.r, a.g - m.g, a.b - m.b);
+      if (dist < 80) return luminance(m) > 128 ? '#ff5d3a' : '#ffc857';
+    }
+    return accent;
   }
 
   // -------------------------------------------------------------------------

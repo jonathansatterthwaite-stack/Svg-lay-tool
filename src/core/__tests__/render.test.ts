@@ -37,7 +37,44 @@ describe('renderer', () => {
     const ghosts = find(tree, (n) => n.attrs['data-ghost'] !== undefined);
     expect(ghosts).toHaveLength(1);
     expect(ghosts[0].attrs['data-layer-id']).toBe(m.id);
-    expect(ghosts[0].attrs.fill).toBe('none');
+    expect(ghosts[0].attrs.fill).toBe('rgba(120,200,255,0.16)'); // faint fill shows the mask extent
+    expect(ghosts[0].attrs['pointer-events']).toBe('stroke'); // but only its outline is hittable
+    const noPreview = renderDocument(doc, { interactive: true, maskPreviewOpacity: 0 });
+    expect(find(noPreview, (n) => n.attrs['data-ghost'] !== undefined)[0].attrs.fill).toBe('none');
+  });
+
+  it('interactive clip masks preview the hidden content faintly; exports do not', () => {
+    let doc = createDocument();
+    const below = createShapeLayer({ name: 'below' });
+    doc = insertLayer(doc, below);
+    doc = insertLayer(doc, createShapeLayer({ mask: createMaskSettings({ mode: 'clip-inverse' }) }));
+    const tree = renderDocument(doc, { interactive: true });
+    const preview = find(tree, (n) => n.attrs['data-mask-preview'] !== undefined);
+    expect(preview).toHaveLength(1);
+    expect(preview[0].attrs.opacity).toBe('0.25');
+    expect(preview[0].attrs['pointer-events']).toBe('none');
+    // the faint copy carries no layer id, the real one does
+    expect(find(preview[0], (n) => n.attrs['data-layer-id'] !== undefined)).toHaveLength(0);
+    expect(find(tree, (n) => n.attrs['data-layer-id'] === below.id)).toHaveLength(1);
+    expect(find(renderDocument(doc), (n) => n.attrs['data-mask-preview'] !== undefined)).toHaveLength(0);
+  });
+
+  it('highlights selected layers in monochrome mode only', () => {
+    let doc = createDocument();
+    const a = createShapeLayer({ name: 'a', fill: { type: 'solid', color: '#ff0000' } });
+    const b = createShapeLayer({ name: 'b', fill: { type: 'solid', color: '#00ff00' } });
+    doc = insertLayer(doc, a);
+    doc = insertLayer(doc, b);
+    const opts = { colorMode: 'monochrome' as const, monoColor: '#ffffff', highlightIds: [b.id], highlightColor: '#4da3ff', interactive: true };
+    const tree = renderDocument(doc, opts);
+    expect(find(tree, (n) => n.attrs['data-layer-id'] === a.id)[0].attrs.fill).toBe('#ffffff');
+    expect(find(tree, (n) => n.attrs['data-layer-id'] === b.id)[0].attrs.fill).toBe('#4da3ff');
+    // a group highlight covers its children
+    const g = groupLayers(doc, [a.id, b.id])!;
+    const gt = renderDocument(g.doc, { ...opts, highlightIds: [g.groupId] });
+    expect(find(gt, (n) => n.attrs['data-layer-id'] === a.id)[0].attrs.fill).toBe('#4da3ff');
+    // grayscale/full ignore it
+    expect(renderDocumentToString(doc, { ...opts, colorMode: 'full' })).toContain('#00ff00');
   });
 
   it('clip mask wraps the layers below in a masked group', () => {

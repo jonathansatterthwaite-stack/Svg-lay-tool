@@ -246,7 +246,7 @@ export class CanvasView {
       r.setAttribute('height', String(doc.height));
     }
 
-    const { defs, body } = renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.renderOptions() });
+    const { defs, body } = renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.canvasRenderOptions() });
     clear(this.docDefs);
     for (const d of defs) this.docDefs.appendChild(vnodeToDom(d));
     clear(this.docG);

@@ -47,6 +47,10 @@ export interface EditorFeatures {
   canvasInteraction: 'hold' | 'direct';
   /** Milliseconds a press must last to pick a layer up in `hold` mode. */
   holdDelay: number;
+  /** Show what clip masks hide at reduced opacity, and fill hidden mask shapes faintly (editor only). */
+  maskPreview: boolean;
+  /** In monochrome mode, paint the selected layer in a contrasting colour on the canvas (editor only). */
+  highlightSelection: boolean;
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -65,6 +69,8 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   layerStrip: true,
   canvasInteraction: 'hold',
   holdDelay: 600,
+  maskPreview: true,
+  highlightSelection: true,
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

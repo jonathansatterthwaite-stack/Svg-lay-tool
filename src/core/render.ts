@@ -21,6 +21,19 @@ export interface RenderOptions {
   colorMode?: ColorMode;
   /** The single colour used in `monochrome` mode (default white). */
   monoColor?: string;
+  /**
+   * Editor aid: layers (and their descendants) painted in `highlightColor`
+   * instead of the monochrome colour, so a selection stays visible when every
+   * shape is the same colour. Only applies in `monochrome` mode.
+   */
+  highlightIds?: Iterable<string>;
+  highlightColor?: string;
+  /**
+   * Editor aid (interactive only): draw the content a clip mask hides at this
+   * opacity, and fill hidden mask shapes faintly, so the effect of editing a
+   * mask can be seen. 0 disables. Default 0.25 when interactive.
+   */
+  maskPreviewOpacity?: number;
 }
 
 /** Paint overrides used when drawing a layer as mask content or as an editor ghost. */
@@ -40,6 +53,9 @@ interface Ctx {
   frame: Mat;
   colorMode: ColorMode;
   monoColor: string;
+  highlight: Set<string>;
+  highlightColor: string;
+  maskPreview: number;
 }
 
 /** Apply the colour mode to a single paint colour. */
@@ -86,6 +102,9 @@ export function renderDocumentParts(doc: SvgDocument, opts: RenderOptions = {}):
     frame: IDENTITY,
     colorMode: opts.colorMode ?? 'full',
     monoColor: opts.monoColor ?? '#ffffff',
+    highlight: new Set(opts.highlightIds ?? []),
+    highlightColor: opts.highlightColor ?? '#4da3ff',
+    maskPreview: opts.interactive ? opts.maskPreviewOpacity ?? 0.25 : 0,
   };
   const body: VNode[] = [];
   if (doc.background && opts.background !== false) {
@@ -126,7 +145,9 @@ function renderChildren(layers: Layer[], ctx: Ctx): VNode[] {
       if (layer.mask.showShape) {
         acc.push(renderLayer(layer, ctx));
       } else if (ctx.interactive) {
-        acc.push(renderLayer(layer, ctx, { fill: 'none', stroke: 'rgba(120,200,255,0.9)', ghost: true }));
+        // Hidden mask shape: dashed outline plus a faint fill so its extent is visible.
+        const fill = ctx.maskPreview > 0 ? 'rgba(120,200,255,0.16)' : 'none';
+        acc.push(renderLayer(layer, ctx, { fill, stroke: 'rgba(120,200,255,0.9)', ghost: true }));
       }
       // The mask shape itself is not part of the stack below later masks.
       continue;
@@ -186,7 +207,15 @@ function applyMask(maskLayer: Layer, acc: VNode[], below: Layer[], ctx: Ctx): VN
     if (ctx.interactive) for (const c of copy) markClone(c);
     return [h('g', {}, acc), h('g', { mask: `url(#${maskId})`, filter: filterUrl }, copy)];
   }
-  return [h('g', { mask: `url(#${maskId})`, filter: filterUrl }, acc)];
+  const out: VNode[] = [];
+  if (ctx.maskPreview > 0) {
+    // Editor aid: what the clip hides, drawn faintly underneath the real result.
+    const faint = acc.map(cloneVNode);
+    for (const c of faint) markClone(c);
+    out.push(h('g', { opacity: fmt(ctx.maskPreview), 'pointer-events': 'none', 'data-mask-preview': '' }, faint));
+  }
+  out.push(h('g', { mask: `url(#${maskId})`, filter: filterUrl }, acc));
+  return out;
 }
 
 /** Clones drawn on top of the originals must not steal pointer hits from them. */
@@ -197,6 +226,19 @@ function markClone(node: VNode): void {
 }
 
 function renderLayer(layer: Layer, ctx: Ctx, override?: PaintOverride): VNode {
+  if (!override && ctx.colorMode === 'monochrome' && ctx.highlight.has(layer.id) && ctx.monoColor !== ctx.highlightColor) {
+    const prev = ctx.monoColor;
+    ctx.monoColor = ctx.highlightColor;
+    try {
+      return renderLayerInner(layer, ctx, override);
+    } finally {
+      ctx.monoColor = prev;
+    }
+  }
+  return renderLayerInner(layer, ctx, override);
+}
+
+function renderLayerInner(layer: Layer, ctx: Ctx, override?: PaintOverride): VNode {
   const attrs: Record<string, string | number | undefined> = {};
   const styles: string[] = [];
   if (layer.opacity < 1) attrs.opacity = fmt(layer.opacity);
@@ -265,7 +307,7 @@ function applyOverrideDeep(node: VNode, override: PaintOverride): VNode {
 }
 
 function applyGhost(node: VNode): void {
-  node.attrs.fill = 'none';
+  node.attrs['pointer-events'] = 'stroke';
   node.attrs['stroke-width'] = 1;
   node.attrs['stroke-dasharray'] = '4 3';
   node.attrs['vector-effect'] = 'non-scaling-stroke';
@@ -292,6 +334,7 @@ function renderShape(
     }
     if (override.ghost) {
       attrs.stroke = override.stroke;
+      if (layer.fill.type === 'none' && !(layer.stroke && layer.stroke.width > 0)) attrs.fill = override.fill;
       applyGhost({ tag: 'path', attrs, children: [] });
     }
   } else {

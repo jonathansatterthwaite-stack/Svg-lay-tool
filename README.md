@@ -137,6 +137,10 @@ touches that group's siblings):
 | `clip-inverse` | only visible outside the mask shape                                |
 | `filter`       | stay visible; inside the shape the mask's `effects` are applied    |
 
+While editing, the canvas shows what a clip mask hides at 25 % opacity and
+fills hidden mask shapes faintly, so the result of moving or resizing a mask is
+visible (`features.maskPreview`, editor only; exports never include it).
+
 `mask.effects` is a list of the same effects available on layers — so
 "blur everything under this circle", "invert inside this star" or "clip the
 stripes to the shield" are all one layer each. The mask layer's own opacity and
@@ -271,6 +275,10 @@ instance by using hue and saturation for their own purposes:
   `monoColor`, so the result is a shaped alpha image built from shapes, opacity
   and clip masks that your app can tint. Gradients and blend modes are disabled;
   only blur, shadow, glow and outline remain (in the mono colour).
+
+On the canvas the selected layer is painted in a contrasting colour while in
+monochrome mode (`features.highlightSelection`), so it stays visible among
+identical shapes; exports are unaffected.
 
 The mode is enforced in the renderer, not just the UI: `exportSvg()`,
 `exportPng()` and the canvas all apply it, so a document loaded from a file
