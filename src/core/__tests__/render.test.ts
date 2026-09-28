@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createDocument, createMaskSettings, createShapeLayer, groupLayers, insertLayer, rotateShape, scaleShapeBox } from '../document';
+import { createDocument, createShapeLayer, groupLayers, insertLayer, rotateShape, scaleShapeBox } from '../document';
+import { createEffectModifier, createMaskModifier, createModifier } from '../modifiers';
 import { buildFilterPrimitives, createEffect } from '../effects';
 import { renderDocument, renderDocumentToString } from '../render';
 import type { VNode } from '../vnode';
@@ -33,7 +34,7 @@ describe('renderer', () => {
   it('adds data-layer-id in interactive mode and ghosts hidden masks', () => {
     let doc = createDocument();
     const a = createShapeLayer({ name: 'a' });
-    const m = createShapeLayer({ name: 'm', mask: createMaskSettings({ mode: 'clip' }) });
+    const m = createShapeLayer({ name: 'm', modifiers: [createMaskModifier({ mode: 'clip' })] });
     doc = insertLayer(doc, a);
     doc = insertLayer(doc, m);
     const tree = renderDocument(doc, { interactive: true });
@@ -51,7 +52,7 @@ describe('renderer', () => {
     let doc = createDocument();
     const below = createShapeLayer({ name: 'below' });
     doc = insertLayer(doc, below);
-    doc = insertLayer(doc, createShapeLayer({ mask: createMaskSettings({ mode: 'clip-inverse' }) }));
+    doc = insertLayer(doc, createShapeLayer({ modifiers: [createMaskModifier({ mode: 'clip-inverse' })] }));
     const tree = renderDocument(doc, { interactive: true });
     const preview = find(tree, (n) => n.attrs['data-mask-preview'] !== undefined);
     expect(preview).toHaveLength(1);
@@ -65,7 +66,7 @@ describe('renderer', () => {
 
   it('activeIds make only those layers (and their children) take pointer events', () => {
     let doc = createDocument();
-    const a = createShapeLayer({ name: 'a', fill: { type: 'none' } });
+    const a = createShapeLayer({ name: 'a', modifiers: [createModifier('fill', { fill: { type: 'none' } })] });
     const b = createShapeLayer({ name: 'b' });
     const locked = createShapeLayer({ name: 'locked', locked: true });
     doc = insertLayer(doc, a);
@@ -87,8 +88,8 @@ describe('renderer', () => {
 
   it('highlights selected layers in monochrome mode only', () => {
     let doc = createDocument();
-    const a = createShapeLayer({ name: 'a', fill: { type: 'solid', color: '#ff0000' } });
-    const b = createShapeLayer({ name: 'b', fill: { type: 'solid', color: '#00ff00' } });
+    const a = createShapeLayer({ name: 'a', color: '#ff0000' });
+    const b = createShapeLayer({ name: 'b', color: '#00ff00' });
     doc = insertLayer(doc, a);
     doc = insertLayer(doc, b);
     const opts = { colorMode: 'monochrome' as const, monoColor: '#ffffff', highlightIds: [b.id], highlightColor: '#4da3ff', interactive: true };
@@ -107,7 +108,7 @@ describe('renderer', () => {
     let doc = createDocument();
     const below = createShapeLayer({ name: 'below' });
     const above = createShapeLayer({ name: 'above' });
-    const mask = createShapeLayer({ name: 'mask', shape: 'ellipse', mask: createMaskSettings({ mode: 'clip' }) });
+    const mask = createShapeLayer({ name: 'mask', shape: 'ellipse', modifiers: [createMaskModifier({ mode: 'clip' })] });
     doc = insertLayer(doc, below);
     doc = insertLayer(doc, mask);
     doc = insertLayer(doc, above);
@@ -127,7 +128,7 @@ describe('renderer', () => {
   it('inverse mask starts with a white rect and black shape', () => {
     let doc = createDocument();
     doc = insertLayer(doc, createShapeLayer());
-    doc = insertLayer(doc, createShapeLayer({ mask: createMaskSettings({ mode: 'clip-inverse' }) }));
+    doc = insertLayer(doc, createShapeLayer({ modifiers: [createMaskModifier({ mode: 'clip-inverse' })] }));
     const tree = renderDocument(doc);
     const mask = find(tree, (n) => n.tag === 'mask')[0];
     expect(mask.children[0]).toMatchObject({ tag: 'rect', attrs: { fill: '#fff' } });
@@ -140,7 +141,7 @@ describe('renderer', () => {
     doc = insertLayer(doc, below);
     doc = insertLayer(
       doc,
-      createShapeLayer({ mask: createMaskSettings({ mode: 'filter', effects: [createEffect('blur', { radius: 6 })] }) }),
+      createShapeLayer({ modifiers: [createMaskModifier({ mode: 'filter', effects: [createEffect('blur', { radius: 6 })] })] }),
     );
     const tree = renderDocument(doc, { interactive: true });
     const paths = find(tree, (n) => n.tag === 'path' && n.attrs['data-ghost'] === undefined);
@@ -159,7 +160,7 @@ describe('renderer', () => {
   it('filter mask with no effects leaves the stack untouched', () => {
     let doc = createDocument();
     doc = insertLayer(doc, createShapeLayer());
-    doc = insertLayer(doc, createShapeLayer({ mask: createMaskSettings({ mode: 'filter' }) }));
+    doc = insertLayer(doc, createShapeLayer({ modifiers: [createMaskModifier({ mode: 'filter' })] }));
     const tree = renderDocument(doc);
     expect(find(tree, (n) => n.tag === 'g' && !!n.attrs.mask)).toHaveLength(0);
   });
@@ -168,7 +169,7 @@ describe('renderer', () => {
     let doc = createDocument();
     const root = createShapeLayer({ name: 'root' });
     const a = createShapeLayer({ name: 'a' });
-    const m = createShapeLayer({ name: 'm', mask: createMaskSettings() });
+    const m = createShapeLayer({ name: 'm', modifiers: [createMaskModifier()] });
     doc = insertLayer(doc, root);
     doc = insertLayer(doc, a);
     doc = insertLayer(doc, m);
@@ -184,11 +185,14 @@ describe('renderer', () => {
     doc = insertLayer(
       doc,
       createShapeLayer({
-        fill: { type: 'linear', angle: 90, stops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }] },
-        stroke: { color: '#f0f', width: 3 },
         blendMode: 'multiply',
         opacity: 0.5,
-        effects: [createEffect('shadow'), createEffect('outline', { enabled: false })],
+        modifiers: [
+          createModifier('fill', { fill: { type: 'linear', angle: 90, stops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }] } }),
+          createModifier('stroke', { color: '#f0f', width: 3 }),
+          createEffectModifier('shadow'),
+          createEffectModifier('outline', { enabled: false }),
+        ],
       }),
     );
     const s = renderDocumentToString(doc);
@@ -204,6 +208,59 @@ describe('renderer', () => {
     let doc = createDocument({ background: '"><script>' });
     doc = insertLayer(doc, createShapeLayer());
     expect(renderDocumentToString(doc)).toContain('fill="&quot;&gt;&lt;script&gt;"');
+  });
+});
+
+describe('modifiers', () => {
+  it('layer colour is the fill unless a fill modifier overrides it; stroke defaults to the layer colour', () => {
+    let doc = createDocument();
+    const a = createShapeLayer({ name: 'a', color: '#123456', modifiers: [createModifier('stroke', { color: null, width: 2 })] });
+    const b = createShapeLayer({ name: 'b', color: '#123456', modifiers: [createModifier('fill', { fill: { type: 'none' } }), createModifier('stroke', { color: '#abcdef', width: 2, enabled: false })] });
+    doc = insertLayer(doc, a);
+    doc = insertLayer(doc, b);
+    const tree = renderDocument(doc, { interactive: true });
+    const pa = find(tree, (n) => n.attrs['data-layer-id'] === a.id)[0];
+    const pb = find(tree, (n) => n.attrs['data-layer-id'] === b.id)[0];
+    expect(pa.attrs.fill).toBe('#123456');
+    expect(pa.attrs.stroke).toBe('#123456');
+    expect(pb.attrs.fill).toBe('none');
+    expect(pb.attrs.stroke).toBeUndefined(); // disabled modifier
+  });
+
+  it('deform turns a rectangle into a trapezoid', () => {
+    const rect = createShapeLayer({ width: 100, height: 100, modifiers: [createModifier('deform', { top: 50, bottom: 100, skew: 0 })] });
+    const tree = renderDocument(insertLayer(createDocument(), rect), { interactive: true });
+    const d = find(tree, (n) => n.attrs['data-layer-id'] === rect.id)[0].attrs.d as string;
+    const xs = [...d.matchAll(/([ML])(-?[\d.]+) (-?[\d.]+)/g)].map((m) => [Number(m[2]), Number(m[3])]);
+    const top = xs.filter(([, y]) => Math.abs(y + 50) < 1e-6).map(([x]) => x);
+    const bottom = xs.filter(([, y]) => Math.abs(y - 50) < 1e-6).map(([x]) => x);
+    expect(Math.max(...top) - Math.min(...top)).toBeCloseTo(50, 6);
+    expect(Math.max(...bottom) - Math.min(...bottom)).toBeCloseTo(100, 6);
+  });
+
+  it('edges with one inward subdivision turn a pentagon into a star', () => {
+    const star = createShapeLayer({ shape: 'star', params: { points: 5, inner: 45 }, width: 200, height: 200 });
+    expect(star.shape).toBe('polygon');
+    expect(star.params.sides).toBe(5);
+    expect(star.modifiers[0]).toMatchObject({ type: 'edges', subdivisions: 1 });
+    const tree = renderDocument(insertLayer(createDocument(), star), { interactive: true });
+    const d = find(tree, (n) => n.attrs['data-layer-id'] === star.id)[0].attrs.d as string;
+    const pts = [...d.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].map((m) => Math.hypot(Number(m[1]), Number(m[2])));
+    expect(pts).toHaveLength(10);
+    const outer = pts.filter((r) => r > 90);
+    const inner = pts.filter((r) => r <= 90);
+    expect(outer).toHaveLength(5);
+    expect(inner).toHaveLength(5);
+    // inner radius well inside the outer points (the polygon is box-fitted, so the ratio is approximate)
+    const ratio = Math.min(...inner) / Math.max(...outer);
+    expect(ratio).toBeGreaterThan(0.25);
+    expect(ratio).toBeLessThan(0.6);
+  });
+
+  it('smooth edges emit quadratic curves', () => {
+    const wavy = createShapeLayer({ params: { sides: 6 }, modifiers: [createModifier('edges', { subdivisions: 1, bend: 40, smooth: true })] });
+    const tree = renderDocument(insertLayer(createDocument(), wavy), { interactive: true });
+    expect(find(tree, (n) => n.attrs['data-layer-id'] === wavy.id)[0].attrs.d as string).toContain('Q');
   });
 });
 

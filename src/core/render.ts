@@ -1,9 +1,10 @@
 import { recolor, toGray } from './color';
 import { buildFilter, effectSpill, effectsForColorMode } from './effects';
 import { childrenBounds, isIdentity2, layerLocalBounds, layerLocalMatrix } from './document';
+import { applyGeometryModifiers, layerEffects, layerFill, layerMask, layerStroke } from './modifiers';
 import { expandRect, fmt, invert, type Mat, multiply, IDENTITY, transformRect } from './matrix';
 import { getShape, shapePath } from './shapes';
-import type { ColorMode, Effect, Fill, Layer, Rect, ShapeLayer, SvgDocument } from './types';
+import type { ColorMode, Effect, Fill, Layer, MaskSettings, Rect, ShapeLayer, SvgDocument } from './types';
 import { cloneVNode, h, vnodeToDom, vnodeToString, type VNode } from './vnode';
 
 export interface RenderOptions {
@@ -151,9 +152,10 @@ function renderChildren(layers: Layer[], ctx: Ctx): VNode[] {
   const below: Layer[] = [];
   for (const layer of layers) {
     if (!layer.visible) continue;
-    if (layer.mask) {
-      acc = applyMask(layer, acc, below, ctx);
-      if (layer.mask.showShape) {
+    const mask = layerMask(layer);
+    if (mask) {
+      acc = applyMask(layer, mask, acc, below, ctx);
+      if (mask.showShape) {
         acc.push(renderLayer(layer, ctx));
       } else if (ctx.interactive) {
         // Hidden mask shape: dashed outline plus a faint fill so its extent is visible.
@@ -169,8 +171,7 @@ function renderChildren(layers: Layer[], ctx: Ctx): VNode[] {
   return acc;
 }
 
-function applyMask(maskLayer: Layer, acc: VNode[], below: Layer[], ctx: Ctx): VNode[] {
-  const settings = maskLayer.mask!;
+function applyMask(maskLayer: Layer, settings: MaskSettings, acc: VNode[], below: Layer[], ctx: Ctx): VNode[] {
   if (acc.length === 0) return acc;
   const region = expandRect(visibleRegion(ctx), 2);
   const maskId = nextId(ctx, 'm');
@@ -264,7 +265,7 @@ function renderLayerInner(layer: Layer, ctx: Ctx, override?: PaintOverride): VNo
   const styles: string[] = [];
   if (layer.opacity < 1) attrs.opacity = fmt(layer.opacity);
   if (layer.blendMode !== 'normal' && !override) styles.push(`mix-blend-mode:${layer.blendMode}`);
-  const effects = override?.ghost ? [] : modeEffects(layer.effects, ctx);
+  const effects = override?.ghost ? [] : modeEffects(layerEffects(layer), ctx);
   if (effects.length) {
     const local = layerLocalBounds(layer) ?? { x: 0, y: 0, width: 0, height: 0 };
     const filter = buildFilter(nextId(ctx, 'f'), effects, local);
@@ -353,26 +354,28 @@ function renderShape(
   override?: PaintOverride,
 ): VNode {
   const def = getShape(layer.shape);
-  const d = shapePath(layer.shape, layer.width, layer.height, layer.params);
+  const d = applyGeometryModifiers(shapePath(layer.shape, layer.width, layer.height, layer.params), layer.modifiers ?? [], layer.width, layer.height);
   attrs.d = d;
   if (def.fillRule === 'evenodd') attrs['fill-rule'] = 'evenodd';
+  const fill = layerFill(layer);
+  const stroke = layerStroke(layer);
 
   if (override) {
-    attrs.fill = layer.fill.type === 'none' ? 'none' : override.fill;
-    if (layer.stroke && layer.stroke.width > 0) {
+    attrs.fill = fill.type === 'none' ? 'none' : override.fill;
+    if (stroke && stroke.width > 0) {
       attrs.stroke = override.stroke;
-      attrs['stroke-width'] = fmt(layer.stroke.width);
+      attrs['stroke-width'] = fmt(stroke.width);
     }
     if (override.ghost) {
       attrs.stroke = override.stroke;
-      if (layer.fill.type === 'none' && !(layer.stroke && layer.stroke.width > 0)) attrs.fill = override.fill;
+      if (fill.type === 'none' && !(stroke && stroke.width > 0)) attrs.fill = override.fill;
       applyGhost({ tag: 'path', attrs, children: [] });
     }
   } else {
-    attrs.fill = fillValue(layer.fill, ctx);
-    if (layer.stroke && layer.stroke.width > 0) {
-      attrs.stroke = applyColorMode(layer.stroke.color, ctx.colorMode, ctx.monoColor);
-      attrs['stroke-width'] = fmt(layer.stroke.width);
+    attrs.fill = fillValue(fill, ctx);
+    if (stroke && stroke.width > 0) {
+      attrs.stroke = applyColorMode(stroke.color, ctx.colorMode, ctx.monoColor);
+      attrs['stroke-width'] = fmt(stroke.width);
       attrs['stroke-linejoin'] = 'round';
     }
   }
@@ -421,5 +424,5 @@ function fillValue(fill: Fill, ctx: Ctx): string {
 
 /** Spill (in local units) of a layer's own effects; useful for export padding. */
 export function layerEffectSpill(layer: Layer): number {
-  return effectSpill(layer.effects);
+  return effectSpill(layerEffects(layer));
 }

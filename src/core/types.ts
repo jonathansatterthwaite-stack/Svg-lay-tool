@@ -121,6 +121,47 @@ export interface MaskSettings {
   showShape: boolean;
 }
 
+/**
+ * Modifiers are stacked on a layer and change how it looks or behaves.
+ * Geometry modifiers (`deform`, `edges`) reshape the outline in order;
+ * `fill`/`stroke` paint it (the last enabled one wins; without a fill
+ * modifier the layer's `color` is used); `effect` entries build the filter
+ * chain; `mask` turns the layer into a mask over the layers below it.
+ */
+export interface ModifierBase {
+  id: string;
+  enabled: boolean;
+}
+
+export type Modifier = ModifierBase &
+  (
+    | { type: 'fill'; fill: Fill }
+    | { type: 'stroke'; color: string | null; width: number }
+    | { type: 'effect'; effect: Effect }
+    | { type: 'mask'; mode: MaskMode; showShape: boolean; effects: Effect[] }
+    | {
+        /** Trapezoid / skew warp of the outline within its box. Widths are % of the box width. */
+        type: 'deform';
+        top: number;
+        bottom: number;
+        /** Horizontal offset of the top edge as % of the box width. */
+        skew: number;
+      }
+    | {
+        /**
+         * Subdivide every straight edge of the outline and push the new points
+         * inwards (negative) or outwards (positive), as % of half the edge length.
+         */
+        type: 'edges';
+        subdivisions: number;
+        bend: number;
+        /** Draw the result with smooth curves instead of straight segments. */
+        smooth: boolean;
+      }
+  );
+
+export type ModifierType = Modifier['type'];
+
 export interface LayerBase {
   id: string;
   name: string;
@@ -134,10 +175,8 @@ export interface LayerBase {
   y: number;
   /** Rotation in degrees, clockwise, about the layer origin. */
   rotation: number;
-  /** Effects applied to this layer itself. */
-  effects: Effect[];
-  /** When set, this layer acts as a mask over the layers below it. */
-  mask: MaskSettings | null;
+  /** Stacked modifiers: paint, effects, mask and geometry changes. */
+  modifiers: Modifier[];
 }
 
 /** 2×2 linear map (no translation): [a c; b d]. */
@@ -169,8 +208,8 @@ export interface ShapeLayer extends LayerBase {
   stretch: Mat2;
   flipX: boolean;
   flipY: boolean;
-  fill: Fill;
-  stroke: Stroke | null;
+  /** Base colour: the solid fill unless a fill modifier overrides it, and the default stroke colour. */
+  color: string;
 }
 
 export interface GroupLayer extends LayerBase {

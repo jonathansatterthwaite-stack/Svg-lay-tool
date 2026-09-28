@@ -31,6 +31,7 @@ export const icons = {
   flipV: wrap('<path d="M3 12h18M7 8l5-5 5 5M7 16l5 5 5-5"/>'),
   plus: wrap('<path d="M12 5v14M5 12h14"/>'),
   settings: wrap('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'),
+  modifiers: wrap('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
   up: wrap('<path d="m18 15-6-6-6 6"/>'),
   down: wrap('<path d="m6 9 6 6 6-6"/>'),
 };

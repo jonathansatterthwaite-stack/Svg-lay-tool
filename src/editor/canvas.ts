@@ -58,7 +58,7 @@ type DragState =
       frameInv: Mat;
       frame: Rect;
     }
-  | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number }
+  | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number; ringR: number }
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
   | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> };
@@ -74,6 +74,7 @@ export class CanvasView {
   private stage: SVGSVGElement;
   private activeHandle: string | null = null;
   private lifted = false;
+  private lastRingR = 0;
   private staticDefs: SVGDefsElement;
   private docDefs: SVGDefsElement;
   private viewG: SVGGElement;
@@ -315,7 +316,9 @@ export class CanvasView {
     const pivot = toScreen({ x: 0, y: 0 });
     const corners = rectCorners(box).map(toScreen);
     const reach = Math.max(...corners.map((c) => Math.hypot(c.x - pivot.x, c.y - pivot.y)));
-    const ringR = reach + (this.coarse ? 28 : 18);
+    // While turning, keep the ring where it was grabbed; it is re-fitted to the new box on release.
+    const ringR = this.drag?.kind === 'rotate' ? this.drag.ringR : reach + (this.coarse ? 28 : 18);
+    this.lastRingR = ringR;
     const rotActive = this.activeHandle === 'rotate';
     const rotDeg = layer.rotation;
     const worldAngle = (rotDeg - 90) * (Math.PI / 180) + (frameAngle * Math.PI) / 180;
@@ -525,6 +528,7 @@ export class CanvasView {
         layer,
         pivotWorld,
         startAngle: Math.atan2(p.y - pivotWorld.y, p.x - pivotWorld.x),
+        ringR: this.lastRingR,
       };
       return;
     }

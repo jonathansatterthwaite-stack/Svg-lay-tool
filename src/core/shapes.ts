@@ -224,58 +224,6 @@ const builtin: ShapeDefinition[] = [
     },
   },
   {
-    id: 'quad',
-    name: 'Quad (trapezoid / skew)',
-    category: 'Basic',
-    params: [
-      { key: 'top', label: 'Top width %', min: 0, max: 100, step: 1, default: 60 },
-      { key: 'offset', label: 'Top offset %', min: -100, max: 100, step: 1, default: 0 },
-      RADIUS_PARAM,
-    ],
-    path: (w, h, p) => {
-      const hw = w / 2;
-      const hh = h / 2;
-      const half = hw * (p.top / 100);
-      // Offset moves the top edge sideways; 100 % puts its centre on the right edge.
-      const cx = (p.offset / 100) * (hw - half);
-      const pts: Pt[] =
-        half < 0.01
-          ? [
-              [cx, -hh],
-              [hw, hh],
-              [-hw, hh],
-            ]
-          : [
-              [cx - half, -hh],
-              [cx + half, -hh],
-              [hw, hh],
-              [-hw, hh],
-            ];
-      return roundedPoly(pts, cornerRadius(w, h, p.radius));
-    },
-  },
-  {
-    id: 'star',
-    name: 'Star',
-    category: 'Basic',
-    params: [
-      { key: 'points', label: 'Points', min: 3, max: 24, step: 1, default: 5 },
-      { key: 'inner', label: 'Inner radius %', min: 5, max: 100, step: 1, default: 45 },
-      RADIUS_PARAM,
-    ],
-    path: (w, h, p) => {
-      const n = Math.round(p.points);
-      const k = p.inner / 100;
-      const pts: Pt[] = [];
-      for (let i = 0; i < n * 2; i++) {
-        const a = (-90 + (180 / n) * i) * (Math.PI / 180);
-        const r = i % 2 === 0 ? 1 : k;
-        pts.push([(w / 2) * r * Math.cos(a), (h / 2) * r * Math.sin(a)]);
-      }
-      return roundedPoly(pts, cornerRadius(w, h, p.radius));
-    },
-  },
-  {
     id: 'gear',
     name: 'Gear',
     category: 'Basic',
@@ -481,7 +429,14 @@ export const BUILTIN_SHAPE_IDS: readonly string[] = builtin.map((d) => d.id);
  * shapes. `resolveShapeAlias` is applied when creating or loading layers, so
  * old documents keep rendering the same picture.
  */
-export const SHAPE_ALIASES: Record<string, { id: string; params: Record<string, number> }> = {
+export interface ShapeAlias {
+  id: string;
+  params: Record<string, number>;
+  /** Modifiers (as plain init objects) that reproduce the old shape from the new one. */
+  modifiers?: Record<string, unknown>[];
+}
+
+export const SHAPE_ALIASES: Record<string, ShapeAlias> = {
   rect: { id: 'polygon', params: { sides: 4 } },
   rectangle: { id: 'polygon', params: { sides: 4 } },
   square: { id: 'polygon', params: { sides: 4 } },
@@ -495,27 +450,40 @@ export const SHAPE_ALIASES: Record<string, { id: string; params: Record<string, 
   ring: { id: 'ellipse', params: { hole: 70 } },
   pie: { id: 'ellipse', params: { sweep: 90 } },
   semicircle: { id: 'ellipse', params: { sweep: 180, start: 270 } },
-  trapezoid: { id: 'quad', params: { top: 60 } },
-  parallelogram: { id: 'quad', params: { top: 75, offset: 100 } },
-  'right-triangle': { id: 'quad', params: { top: 0, offset: -100 } },
+  trapezoid: { id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'deform', top: 60, bottom: 100, skew: 0 }] },
+  quad: { id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'deform', top: 60, bottom: 100, skew: 0 }] },
+  parallelogram: { id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'deform', top: 75, bottom: 100, skew: 12.5 }] },
+  'right-triangle': { id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'deform', top: 0, bottom: 100, skew: -50 }] },
+  star: { id: 'polygon', params: { sides: 5 }, modifiers: [{ type: 'edges', subdivisions: 1, bend: -63.9, smooth: false }] },
 };
 
 /** Map legacy/alias shape ids onto registered shapes, translating parameters. */
 export function resolveShapeAlias(
   shapeId: string,
   params: Record<string, number> = {},
-): { id: string; params: Record<string, number> } {
+): { id: string; params: Record<string, number>; modifiers?: Record<string, unknown>[] } {
   if (registry.has(shapeId)) return { id: shapeId, params };
   const alias = SHAPE_ALIASES[shapeId];
   if (!alias) return { id: shapeId, params };
   const out = { ...alias.params };
+  let modifiers = alias.modifiers?.map((m) => ({ ...m }));
+  if (shapeId === 'star') {
+    const points = typeof params.points === 'number' ? Math.round(params.points) : 5;
+    const inner = typeof params.inner === 'number' ? params.inner / 100 : 0.45;
+    out.sides = points;
+    const half = Math.PI / points;
+    modifiers = [{ type: 'edges', subdivisions: 1, bend: (-(Math.cos(half) - inner) / Math.sin(half)) * 100, smooth: false }];
+  }
+  if ((shapeId === 'quad' || shapeId === 'trapezoid') && modifiers) {
+    if (typeof params.top === 'number') modifiers[0].top = params.top;
+    if (typeof params.offset === 'number') modifiers[0].skew = (params.offset / 100) * (1 - (Number(modifiers[0].top) || 0) / 100) * 50;
+  }
   // Old ring/rounded-rect parameters were expressed differently.
   if (shapeId === 'ring' && typeof params.thickness === 'number') out.hole = 100 - params.thickness;
   if (shapeId === 'rounded-rect' && typeof params.radius === 'number') out.radius = params.radius * 2;
-  if (shapeId === 'trapezoid' && typeof params.top === 'number') out.top = params.top;
   if (shapeId === 'pie') {
     if (typeof params.sweep === 'number') out.sweep = params.sweep;
     if (typeof params.start === 'number') out.start = params.start;
   }
-  return { id: alias.id, params: out };
+  return { id: alias.id, params: out, modifiers };
 }

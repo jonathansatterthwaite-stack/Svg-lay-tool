@@ -12,8 +12,9 @@ import {
   IDENTITY,
 } from './matrix';
 import { EFFECT_DEFS } from './effects';
+import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Effect, GroupLayer, Layer, Mat2, MaskSettings, Rect, ShapeLayer, SvgDocument } from './types';
+import type { Effect, Fill, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -41,7 +42,8 @@ export type GroupLayerInit = Partial<Omit<GroupLayer, 'type' | 'id'>>;
 export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
   const resolved = resolveShapeAlias(init.shape ?? 'polygon', init.params ?? {});
   const def = getShape(resolved.id);
-  init = { ...init, shape: def.id, params: resolved.params };
+  const aliasMods = (resolved.modifiers ?? []).map((m) => normalizeModifier(m)).filter((m): m is Modifier => !!m);
+  init = { ...init, shape: def.id, params: resolved.params, modifiers: [...aliasMods, ...(init.modifiers ?? [])] };
   return {
     type: 'shape',
     id: createId('l'),
@@ -53,8 +55,7 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
     x: 0,
     y: 0,
     rotation: 0,
-    effects: [],
-    mask: null,
+    modifiers: [],
     shape: def.id,
     params: { ...defaultShapeParams(def), ...(init.params ?? {}) },
     width: 100,
@@ -62,8 +63,7 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
     stretch: { ...IDENTITY2 },
     flipX: false,
     flipY: false,
-    fill: { type: 'solid', color: '#e8e8e8' },
-    stroke: null,
+    color: '#e8e8e8',
     ...stripUndefined(init),
     // params merged above; never let a partial override drop defaults
     ...(init.params ? { params: { ...defaultShapeParams(def), ...init.params } } : {}),
@@ -82,8 +82,7 @@ export function createGroupLayer(init: GroupLayerInit = {}): GroupLayer {
     x: 0,
     y: 0,
     rotation: 0,
-    effects: [],
-    mask: null,
+    modifiers: [],
     scale: 1,
     stretch: { ...IDENTITY2 },
     children: [],
@@ -93,6 +92,33 @@ export function createGroupLayer(init: GroupLayerInit = {}): GroupLayer {
 
 export function createMaskSettings(overrides: Partial<MaskSettings> = {}): MaskSettings {
   return { mode: 'clip', effects: [], showShape: false, ...overrides };
+}
+
+/** Add a modifier to a layer (appended, or replacing an existing one when only one is allowed). */
+export function addModifier(layer: Layer, modifier: Modifier): Layer {
+  const def = MODIFIER_DEFS[modifier.type];
+  const rest = def.single ? (layer.modifiers ?? []).filter((m) => m.type !== modifier.type) : layer.modifiers ?? [];
+  return { ...layer, modifiers: [...rest, modifier] };
+}
+
+export function updateModifier(layer: Layer, id: string, patch: Partial<Modifier> | ((m: Modifier) => Modifier)): Layer {
+  return {
+    ...layer,
+    modifiers: (layer.modifiers ?? []).map((m) => (m.id === id ? (typeof patch === 'function' ? patch(m) : ({ ...m, ...patch } as Modifier)) : m)),
+  };
+}
+
+export function removeModifier(layer: Layer, id: string): Layer {
+  return { ...layer, modifiers: (layer.modifiers ?? []).filter((m) => m.id !== id) };
+}
+
+export function moveModifier(layer: Layer, id: string, delta: number): Layer {
+  const mods = [...(layer.modifiers ?? [])];
+  const i = mods.findIndex((m) => m.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= mods.length) return layer;
+  [mods[i], mods[j]] = [mods[j], mods[i]];
+  return { ...layer, modifiers: mods };
 }
 
 function stripUndefined<T extends object>(o: T): Partial<T> {
@@ -296,16 +322,22 @@ export function sortByStackOrder(doc: SvgDocument, ids: Iterable<string>): strin
 /** Deep clone with fresh ids (layers and effects). */
 export function cloneLayer(layer: Layer): Layer {
   const cloneEffects = (effects: Effect[]) => effects.map((e) => ({ ...e, id: createId('e') }));
+  const cloneModifier = (m: Modifier): Modifier => {
+    const copy = { ...m, id: createId('m') } as Modifier;
+    if (copy.type === 'effect') copy.effect = { ...copy.effect, id: createId('e') };
+    if (copy.type === 'mask') copy.effects = cloneEffects(copy.effects);
+    if (copy.type === 'fill') copy.fill = { ...copy.fill };
+    return copy;
+  };
   const base = {
     ...layer,
     id: createId(layer.type === 'group' ? 'g' : 'l'),
-    effects: cloneEffects(layer.effects),
-    mask: layer.mask ? { ...layer.mask, effects: cloneEffects(layer.mask.effects) } : null,
+    modifiers: (layer.modifiers ?? []).map(cloneModifier),
   };
   if (base.type === 'group') {
     return { ...base, stretch: { ...(base.stretch ?? IDENTITY2) }, children: base.children.map(cloneLayer) };
   }
-  return { ...base, params: { ...base.params }, stretch: { ...(base.stretch ?? IDENTITY2) }, fill: { ...base.fill }, stroke: base.stroke ? { ...base.stroke } : null };
+  return { ...base, params: { ...base.params }, stretch: { ...(base.stretch ?? IDENTITY2) } };
 }
 
 /** Duplicate layers in place (each copy goes directly above its source). Returns new ids. */
@@ -615,20 +647,33 @@ function normalizeLayer(input: unknown): Layer | null {
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
   const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d);
-  const effects = Array.isArray(raw.effects) ? raw.effects.map(normalizeEffect).filter((e): e is Effect => !!e) : [];
+  // Modifiers (new format) plus conversion of the legacy fill/stroke/effects/mask fields.
+  const modifiers: Modifier[] = Array.isArray(raw.modifiers)
+    ? raw.modifiers.map(normalizeModifier).filter((m): m is Modifier => !!m)
+    : [];
+  let legacyColor: string | null = null;
+  const legacyFill = normalizeFill(raw.fill);
+  if (legacyFill) {
+    if (legacyFill.type === 'solid') legacyColor = legacyFill.color;
+    else modifiers.push(createModifier('fill', { fill: legacyFill }));
+  }
+  const rawStroke = raw.stroke as Record<string, unknown> | null | undefined;
+  if (rawStroke && typeof rawStroke === 'object') {
+    modifiers.push(createModifier('stroke', { color: str(rawStroke.color, '#000000'), width: Math.max(0, num(rawStroke.width, 1)) }));
+  }
+  if (Array.isArray(raw.effects)) {
+    for (const e of raw.effects.map(normalizeEffect)) if (e) modifiers.push(createModifier('effect', { effect: e }));
+  }
   const rawMask = raw.mask as Record<string, unknown> | null | undefined;
-  const mask: MaskSettings | null =
-    rawMask && typeof rawMask === 'object'
-      ? {
-          mode: (['clip', 'clip-inverse', 'filter'] as const).includes(rawMask.mode as never)
-            ? (rawMask.mode as MaskSettings['mode'])
-            : 'clip',
-          effects: Array.isArray(rawMask.effects)
-            ? rawMask.effects.map(normalizeEffect).filter((e): e is Effect => !!e)
-            : [],
-          showShape: bool(rawMask.showShape, false),
-        }
-      : null;
+  if (rawMask && typeof rawMask === 'object' && !modifiers.some((m) => m.type === 'mask')) {
+    modifiers.push(
+      createModifier('mask', {
+        mode: (['clip', 'clip-inverse', 'filter'] as const).includes(rawMask.mode as never) ? (rawMask.mode as MaskSettings['mode']) : 'clip',
+        effects: Array.isArray(rawMask.effects) ? rawMask.effects.map(normalizeEffect).filter((e): e is Effect => !!e) : [],
+        showShape: bool(rawMask.showShape, false),
+      }),
+    );
+  }
   const base = {
     id: str(raw.id, createId('l')),
     name: str(raw.name, 'Layer'),
@@ -639,8 +684,7 @@ function normalizeLayer(input: unknown): Layer | null {
     x: num(raw.x, 0),
     y: num(raw.y, 0),
     rotation: num(raw.rotation, 0),
-    effects,
-    mask,
+    modifiers,
   };
   if (raw.type === 'group') {
     const children = Array.isArray(raw.children)
@@ -657,30 +701,8 @@ function normalizeLayer(input: unknown): Layer | null {
   const resolved = resolveShapeAlias(str(raw.shape, 'polygon'), rawParams);
   const def = getShape(resolved.id);
   const params: Record<string, number> = { ...defaultShapeParams(def), ...resolved.params };
-  const rawFill = raw.fill as Record<string, unknown> | undefined;
-  let fill: ShapeLayer['fill'] = { type: 'solid', color: '#e8e8e8' };
-  if (rawFill && typeof rawFill === 'object') {
-    if (rawFill.type === 'none') fill = { type: 'none' };
-    else if (rawFill.type === 'linear' || rawFill.type === 'radial') {
-      const stops = Array.isArray(rawFill.stops)
-        ? rawFill.stops
-            .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
-            .map((s) => ({ offset: Math.max(0, Math.min(1, num(s.offset, 0))), color: str(s.color, '#000000') }))
-        : [];
-      const safeStops = stops.length >= 2 ? stops : [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#000000' }];
-      fill =
-        rawFill.type === 'linear'
-          ? { type: 'linear', angle: num(rawFill.angle, 0), stops: safeStops }
-          : { type: 'radial', stops: safeStops };
-    } else if (typeof rawFill.color === 'string') fill = { type: 'solid', color: rawFill.color };
-  } else if (typeof raw.fill === 'string') {
-    fill = { type: 'solid', color: raw.fill };
-  }
-  const rawStroke = raw.stroke as Record<string, unknown> | null | undefined;
-  const stroke =
-    rawStroke && typeof rawStroke === 'object'
-      ? { color: str(rawStroke.color, '#000000'), width: Math.max(0, num(rawStroke.width, 1)) }
-      : null;
+  const aliasMods = (resolved.modifiers ?? []).map(normalizeModifier).filter((m): m is Modifier => !!m);
+  base.modifiers = [...aliasMods, ...base.modifiers];
   return {
     ...base,
     type: 'shape',
@@ -691,9 +713,72 @@ function normalizeLayer(input: unknown): Layer | null {
     stretch: parseMat2(raw.stretch),
     flipX: bool(raw.flipX, false),
     flipY: bool(raw.flipY, false),
-    fill,
-    stroke,
+    color: str(raw.color, legacyColor ?? '#e8e8e8'),
   };
+}
+
+function normalizeFill(input: unknown): Fill | null {
+  if (typeof input === 'string') return { type: 'solid', color: input };
+  if (!input || typeof input !== 'object') return null;
+  const rawFill = input as Record<string, unknown>;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d);
+  if (rawFill.type === 'none') return { type: 'none' };
+  if (rawFill.type === 'linear' || rawFill.type === 'radial') {
+    const stops = Array.isArray(rawFill.stops)
+      ? rawFill.stops
+          .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+          .map((s) => ({ offset: Math.max(0, Math.min(1, num(s.offset, 0))), color: str(s.color, '#000000') }))
+      : [];
+    const safeStops = stops.length >= 2 ? stops : [{ offset: 0, color: '#ffffff' }, { offset: 1, color: '#000000' }];
+    return rawFill.type === 'linear'
+      ? { type: 'linear', angle: num(rawFill.angle, 0), stops: safeStops }
+      : { type: 'radial', stops: safeStops };
+  }
+  if (typeof rawFill.color === 'string') return { type: 'solid', color: rawFill.color };
+  return null;
+}
+
+/** Coerce a plain object into a valid modifier (unknown types are dropped). */
+export function normalizeModifier(input: unknown): Modifier | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  if (typeof raw.type !== 'string' || !(raw.type in MODIFIER_DEFS)) return null;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
+  const base = { id: typeof raw.id === 'string' ? raw.id : createId('m'), enabled: bool(raw.enabled, true) };
+  switch (raw.type as Modifier['type']) {
+    case 'fill': {
+      const fill = normalizeFill(raw.fill) ?? createModifier('fill').fill;
+      return { ...base, type: 'fill', fill };
+    }
+    case 'stroke':
+      return { ...base, type: 'stroke', color: typeof raw.color === 'string' ? raw.color : null, width: Math.max(0, num(raw.width, 4)) };
+    case 'effect': {
+      const effect = normalizeEffect(raw.effect);
+      return effect ? { ...base, type: 'effect', effect } : null;
+    }
+    case 'mask':
+      return {
+        ...base,
+        type: 'mask',
+        mode: (['clip', 'clip-inverse', 'filter'] as const).includes(raw.mode as never) ? (raw.mode as MaskSettings['mode']) : 'clip',
+        showShape: bool(raw.showShape, false),
+        effects: Array.isArray(raw.effects) ? raw.effects.map(normalizeEffect).filter((e): e is Effect => !!e) : [],
+      };
+    case 'deform':
+      return { ...base, type: 'deform', top: num(raw.top, 60), bottom: num(raw.bottom, 100), skew: num(raw.skew, 0) };
+    case 'edges':
+      return {
+        ...base,
+        type: 'edges',
+        subdivisions: Math.max(0, Math.min(16, Math.round(num(raw.subdivisions, 1)))),
+        bend: num(raw.bend, -40),
+        smooth: bool(raw.smooth, false),
+      };
+    default:
+      return null;
+  }
 }
 
 function parseMat2(input: unknown): Mat2 {

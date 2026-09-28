@@ -1,14 +1,11 @@
 import {
   BLEND_MODES,
-  createMaskSettings,
   getShape,
   listShapes,
   defaultShapeParams,
   type BlendMode,
-  type Fill,
   type GroupLayer,
   type Layer,
-  type MaskMode,
   type ShapeLayer,
   layerBox,
   rotateLayer,
@@ -17,9 +14,9 @@ import {
 } from '../core';
 import { el } from './dom';
 import type { SvgLayEditor } from './editor';
-import { effectsEditor } from './effects-editor';
 import { button, checkbox, colorField, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
+import { ModifiersPanel } from './modifiers-panel';
 
 export type PropertiesMode = 'auto' | 'document' | 'layer';
 
@@ -27,9 +24,12 @@ export class PropertiesPanel {
   readonly el: HTMLDivElement;
   /** `auto` shows canvas settings when nothing is selected; the others pin one view (mobile tabs). */
   mode: PropertiesMode = 'auto';
+  /** In `auto` mode the modifiers stack is shown under the layer settings (desktop). */
+  private modifiers: ModifiersPanel;
 
   constructor(private editor: SvgLayEditor) {
     this.el = el('div', { class: 'slt-props' });
+    this.modifiers = new ModifiersPanel(editor);
   }
 
   render(): void {
@@ -52,6 +52,10 @@ export class PropertiesPanel {
       } else this.renderDocument();
     } else if (layers.length === 1) this.renderLayer(layers[0]);
     else this.renderMulti(layers);
+    if (this.mode === 'auto' && layers.length === 1) {
+      this.modifiers.render();
+      this.el.appendChild(this.modifiers.el);
+    }
   }
 
   private activeElement(): Element | null {
@@ -201,6 +205,10 @@ export class PropertiesPanel {
         ]),
       );
     }
+    if (layer.type === 'shape') {
+      const field = colorField(f.colorMode, layer.color, (v, c) => patch<ShapeLayer>({ color: v }, c));
+      if (field) transformChildren.push(row('Colour', field));
+    }
     if (f.opacity) {
       transformChildren.push(row('Opacity', slider(layer.opacity, (v, c) => patch({ opacity: v }, c), { min: 0, max: 1, step: 0.01 })));
     }
@@ -246,120 +254,9 @@ export class PropertiesPanel {
         );
       }
       this.el.appendChild(section('Shape', shapeChildren));
-      this.el.appendChild(section('Fill', this.fillFields(layer, apply)));
-      if (f.strokes) this.el.appendChild(section('Stroke', this.strokeFields(layer, apply)));
     }
-
-    // Effects
-    if (f.effects !== false) {
-      this.el.appendChild(section('Effects', [effectsEditor(layer.effects, (effects, c) => patch({ effects }, c), f)]));
-    }
-
-    // Mask
-    if (!f.masks) return;
-    const maskChildren: HTMLElement[] = [
-      checkbox('Use as mask for layers below', !!layer.mask, (c) => patch({ mask: c ? createMaskSettings() : null })),
-    ];
-    if (layer.mask) {
-      const mask = layer.mask;
-      const setMask = (p: Partial<typeof mask>, commit = true) => apply((l) => ({ ...l, mask: { ...l.mask!, ...p } }), commit);
-      maskChildren.push(
-        row(
-          'Mode',
-          select<MaskMode>(
-            mask.mode,
-            [
-              { value: 'clip', label: 'Clip: show below only inside' },
-              { value: 'clip-inverse', label: 'Clip inverse: hide inside' },
-              { value: 'filter', label: 'Effect region: apply effects inside' },
-            ],
-            (v) => setMask({ mode: v }),
-          ),
-        ),
-        row('', checkbox('Also draw the shape itself', mask.showShape, (c) => setMask({ showShape: c }))),
-        el('div', { class: 'slt-hint' }, [
-          mask.mode === 'filter'
-            ? 'The layers below stay visible; inside this shape the effects below are applied to them.'
-            : 'Effects below are applied to the clipped result. Add a Blur on the layer itself for a soft edge.',
-        ]),
-      );
-      if (f.effects !== false) {
-        maskChildren.push(
-          el('div', { class: 'slt-section-head' }, ['Effects on layers below']),
-          effectsEditor(mask.effects, (effects, c) => setMask({ effects }, c), f),
-        );
-      }
-    }
-    this.el.appendChild(section('Mask', maskChildren));
   }
 
-  private fillFields(layer: ShapeLayer, apply: <T extends Layer>(fn: (l: T) => T, commit?: boolean) => void): HTMLElement[] {
-    const fill = layer.fill;
-    const features = this.editor.features;
-    const mode = features.colorMode;
-    const setFill = (f: Fill, commit = true) => apply<ShapeLayer>((l) => ({ ...l, fill: f }), commit);
-    const types: { value: Fill['type']; label: string }[] = [{ value: 'solid', label: mode === 'monochrome' ? 'Filled' : 'Solid' }];
-    if (features.gradients) {
-      types.push({ value: 'linear', label: 'Linear gradient' }, { value: 'radial', label: 'Radial gradient' });
-    }
-    types.push({ value: 'none', label: 'None' });
-    // A gradient loaded from a file while gradients are disabled still shows so it can be changed.
-    if (!types.some((t) => t.value === fill.type)) types.push({ value: fill.type, label: `${fill.type} gradient` });
-    const out: HTMLElement[] = [row('Type', select<Fill['type']>(fill.type, types, (v) => setFill(convertFill(fill, v))))];
-    if (fill.type === 'solid') {
-      const field = colorField(mode, fill.color, (v, c) => setFill({ type: 'solid', color: v }, c));
-      if (field) out.push(row('Colour', field));
-    } else if (fill.type === 'linear' || fill.type === 'radial') {
-      fill.stops.forEach((stop, i) => {
-        const setStop = (p: Partial<typeof stop>, c: boolean) =>
-          setFill({ ...fill, stops: fill.stops.map((s, j) => (j === i ? { ...s, ...p } : s)) }, c);
-        const field = colorField(mode, stop.color, (v, c) => setStop({ color: v }, c));
-        if (field) out.push(row(`Stop ${i + 1}`, field));
-        out.push(row('Position', slider(stop.offset, (v, c) => setStop({ offset: v }, c), { min: 0, max: 1, step: 0.01 })));
-      });
-      out.push(
-        el('div', { class: 'slt-btn-row' }, [
-          button('Add stop', () => setFill({ ...fill, stops: [...fill.stops, { offset: 1, color: '#ffffff' }] }), { cls: 'slt-small' }),
-          fill.stops.length > 2
-            ? button('Remove last', () => setFill({ ...fill, stops: fill.stops.slice(0, -1) }), { cls: 'slt-small' })
-            : el('span'),
-        ]),
-      );
-      if (fill.type === 'linear') {
-        out.push(row('Angle', slider(fill.angle, (v, c) => setFill({ ...fill, angle: v }, c), { min: 0, max: 360, step: 1 })));
-      }
-    }
-    return out;
-  }
-
-  private strokeFields(layer: ShapeLayer, apply: <T extends Layer>(fn: (l: T) => T, commit?: boolean) => void): HTMLElement[] {
-    const stroke = layer.stroke;
-    const setStroke = (s: ShapeLayer['stroke'], commit = true) => apply<ShapeLayer>((l) => ({ ...l, stroke: s }), commit);
-    const out: HTMLElement[] = [
-      row('', checkbox('Enable stroke', !!stroke, (c) => setStroke(c ? { color: '#ffffff', width: 4 } : null))),
-    ];
-    if (stroke) {
-      const field = colorField(this.editor.features.colorMode, stroke.color, (v, c) => setStroke({ ...stroke, color: v }, c));
-      if (field) out.push(row('Colour', field));
-      out.push(row('Width', slider(stroke.width, (v, c) => setStroke({ ...stroke, width: v }, c), { min: 0, max: 100, step: 0.5 })));
-    }
-    return out;
-  }
-}
-
-function convertFill(fill: Fill, type: Fill['type']): Fill {
-  const base = fill.type === 'solid' ? fill.color : fill.type === 'none' ? '#e8e8e8' : fill.stops[0].color;
-  const stops = fill.type === 'linear' || fill.type === 'radial' ? fill.stops : [{ offset: 0, color: base }, { offset: 1, color: '#000000' }];
-  switch (type) {
-    case 'solid':
-      return { type: 'solid', color: base };
-    case 'linear':
-      return { type: 'linear', angle: fill.type === 'linear' ? fill.angle : 90, stops };
-    case 'radial':
-      return { type: 'radial', stops };
-    case 'none':
-      return { type: 'none' };
-  }
 }
 
 function pickKnown(params: Record<string, number>, def: ReturnType<typeof getShape>): Record<string, number> {

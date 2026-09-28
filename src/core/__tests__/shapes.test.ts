@@ -4,7 +4,8 @@ import { BUILTIN_SHAPE_IDS, defaultShapeParams, getShape, listShapes, registerSh
 describe('shape library', () => {
   it('has the built-in shapes', () => {
     expect(BUILTIN_SHAPE_IDS.length).toBeGreaterThan(10);
-    expect(listShapes().map((s) => s.id)).toEqual(expect.arrayContaining(['polygon', 'ellipse', 'quad', 'star', 'gear']));
+    expect(listShapes().map((s) => s.id)).toEqual(expect.arrayContaining(['polygon', 'ellipse', 'gear']));
+    expect(listShapes().map((s) => s.id)).not.toContain('star');
   });
 
   it('every shape produces finite path data at several sizes', () => {
@@ -71,8 +72,11 @@ describe('shape library', () => {
   it('maps legacy shape ids onto the consolidated shapes', () => {
     expect(resolveShapeAlias('rect')).toEqual({ id: 'polygon', params: { sides: 4 } });
     expect(resolveShapeAlias('ring', { thickness: 30 })).toEqual({ id: 'ellipse', params: { hole: 70 } });
-    expect(resolveShapeAlias('right-triangle')).toEqual({ id: 'quad', params: { top: 0, offset: -100 } });
-    expect(resolveShapeAlias('star', { points: 6 })).toEqual({ id: 'star', params: { points: 6 } });
+    expect(resolveShapeAlias('right-triangle')).toMatchObject({ id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'deform', top: 0 }] });
+    const star = resolveShapeAlias('star', { points: 6 });
+    expect(star).toMatchObject({ id: 'polygon', params: { sides: 6 } });
+    expect(star.modifiers![0]).toMatchObject({ type: 'edges', subdivisions: 1 });
+    expect(Number(star.modifiers![0].bend)).toBeLessThan(0);
     expect(resolveShapeAlias('custom-unknown')).toEqual({ id: 'custom-unknown', params: {} });
   });
 });

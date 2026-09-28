@@ -40,6 +40,7 @@ import { icon } from './icons';
 import { LayersPanel } from './layers-panel';
 import { LayerStrip } from './layer-strip';
 import { LibraryPanel } from './library-panel';
+import { ModifiersPanel } from './modifiers-panel';
 import { PropertiesPanel } from './properties-panel';
 import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, type ThemeName } from './features';
 import { EDITOR_STYLES } from './styles';
@@ -78,7 +79,7 @@ export interface EditorOptions {
   onSelectionChange?: (ids: string[]) => void;
 }
 
-export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer';
+export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer' | 'modifiers';
 
 export interface ViewState {
   zoom: number;
@@ -128,6 +129,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private layersPanel: LayersPanel | null = null;
   private strip: LayerStrip | null = null;
   private propsPanel: PropertiesPanel | null = null;
+  private modifiersPanel: ModifiersPanel | null = null;
   private disposers: (() => void)[] = [];
   private destroyed = false;
 
@@ -237,6 +239,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
         { id: 'layers', label: 'Layers', ic: 'folder', show: !!this.layersPanel },
         { id: 'canvas', label: 'Canvas', ic: 'fit', show: !!this.propsPanel },
         { id: 'layer', label: 'Layer', ic: 'settings', show: !!this.propsPanel },
+        { id: 'modifiers', label: 'Modifiers', ic: 'modifiers', show: !!this.propsPanel },
       ];
       for (const t of tabs) {
         if (!t.show) continue;
@@ -268,10 +271,19 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     }
     this.sheetEl.replaceChildren();
     if (open) {
-      const panel = tab === 'shapes' ? this.library?.el : tab === 'layers' ? this.layersPanel?.el : this.propsPanel?.el;
-      if (this.propsPanel && (tab === 'canvas' || tab === 'layer')) {
-        this.propsPanel.mode = tab === 'canvas' ? 'document' : 'layer';
-        this.propsPanel.render();
+      let panel: HTMLElement | undefined;
+      if (tab === 'shapes') panel = this.library?.el;
+      else if (tab === 'layers') panel = this.layersPanel?.el;
+      else if (tab === 'modifiers') {
+        this.modifiersPanel ??= new ModifiersPanel(this);
+        this.modifiersPanel.render();
+        panel = this.modifiersPanel.el;
+      } else {
+        panel = this.propsPanel?.el;
+        if (this.propsPanel) {
+          this.propsPanel.mode = tab === 'canvas' ? 'document' : 'layer';
+          this.propsPanel.render();
+        }
       }
       if (panel) this.sheetEl.appendChild(panel);
       delete this.rootEl.dataset.sheetClosed;
@@ -406,7 +418,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       y: Math.round(centre.y),
       width: size,
       height: size,
-      fill: { type: 'solid', color: this.nextColor(count) },
+      color: this.nextColor(count),
       ...(init as object),
     });
     this.store.commit((d) => insertLayer(d, layer, parentId, index));
@@ -658,6 +670,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.toolbar?.render();
     this.layersPanel?.render();
     this.propsPanel?.render();
+    if (this.layout === 'mobile' && this.activeTab === 'modifiers' && this.sheetOpen) this.modifiersPanel?.render();
   }
 
   /** Re-read the shape registry (call after `registerShape`). */

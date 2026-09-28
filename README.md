@@ -117,8 +117,9 @@ Every layer has `x`, `y` (its origin in the parent's space), `rotation`
 and an optional `mask`.
 
 - **Shape layers** reference a shape from the library by id, with `width`,
-  `height`, `flipX`/`flipY`, shape `params` (corner radius, star points …), a
-  `fill` (solid, linear or radial gradient, or none) and an optional `stroke`.
+  `height`, `flipX`/`flipY`, shape `params` (sides, corner radius …) and a
+  base `color`. Fill overrides, strokes, effects, masks and geometry changes
+  are modifiers (see below).
   The origin is the centre of the shape. `width` × `height` is the size the
   geometry is generated at; `rotation` turns it rigidly, and `stretch` is a
   canvas-axis stretch applied afterwards. Rotating never distorts a shape,
@@ -134,10 +135,33 @@ and an optional `mask`.
   the canvas axes exactly as shapes do; `rotateLayer()`, `scaleLayerBox()`
   and `setLayerBoxSize()` work on both kinds.
 
+### Modifiers
+
+Everything beyond position, size, rotation and the base `color` is a
+**modifier** in `layer.modifiers`, edited in the Modifiers panel (desktop:
+under the layer settings; mobile: its own tab). A shape with no modifiers is
+simply filled with its colour. Modifier types:
+
+| type     | what it does                                                                    |
+| -------- | ------------------------------------------------------------------------------- |
+| `fill`   | replaces the colour fill with a gradient, another solid or no fill               |
+| `stroke` | outlines the shape; colour defaults to the layer colour                          |
+| `effect` | one effect (blur, shadow, glow, outline, tint …); stack several for a chain      |
+| `mask`   | turns the layer into a mask over the layers below (see Masks)                    |
+| `deform` | trapezoid / skew warp: top and bottom width %, top offset % (a rectangle with a narrow top is a trapezoid; top 0 is a triangle) |
+| `edges`  | subdivides every straight edge and bends the new points in or out; smooth curves optional (a pentagon with one inward subdivision is a star; outward + smooth gives petals) |
+
+Geometry modifiers (`deform`, `edges`) apply in order before painting;
+several can be stacked. `createModifier(type, init)`, `createEffectModifier()`
+and `createMaskModifier()` build them; `addModifier()`, `updateModifier()`,
+`removeModifier()` and `moveModifier()` edit a layer's stack. Documents saved
+by earlier versions (with `fill`, `stroke`, `effects`, `mask` fields, or the
+removed `star`/`quad` shapes) are converted on load.
+
 ### Masks
 
-Set `layer.mask` and the layer stops drawing itself; instead it affects the
-layers **below it inside the same parent** (so a mask inside a group only
+Add a `mask` modifier and the layer stops drawing itself; instead it affects
+the layers **below it inside the same parent** (so a mask inside a group only
 touches that group's siblings):
 
 | mode           | what happens to the layers below                                   |
@@ -161,9 +185,10 @@ also draw the mask layer normally.
 
 `blur`, `brightness`, `contrast`, `saturate`, `hue-rotate`, `grayscale`,
 `sepia`, `invert`, `tint`, `shadow`, `glow`, `outline`. Each is a small object
-(`{ type: 'blur', radius: 4, enabled: true }` …); `createEffect(type)` gives
-you one with defaults. They compile to SVG `<filter>` primitives, so exported
-files look identical to the canvas.
+(`{ type: 'blur', radius: 4, enabled: true }` …) carried by an `effect`
+modifier; `createEffectModifier(type)` gives you one with defaults. They
+compile to SVG `<filter>` primitives, so exported files look identical to the
+canvas.
 
 ### Shape library
 
@@ -171,10 +196,8 @@ A small set of parametric shapes covers what used to be many fixed ones:
 
 | shape        | parameters                                   | covers                                         |
 | ------------ | -------------------------------------------- | ---------------------------------------------- |
-| Polygon      | sides (3–24), corner radius                  | rectangle, rounded rectangle, triangle, pentagon, hexagon, octagon … |
+| Polygon      | sides (3–24), corner radius                  | rectangle, rounded rectangle, triangle, pentagon, hexagon, octagon …; with a `deform` modifier: trapezoid, parallelogram, right triangle; with an `edges` modifier: stars, gears, flowers |
 | Ellipse / arc| sweep angle, start angle, hole               | circle, ellipse, ring, pie, semicircle, annular sector |
-| Quad         | top width, top offset, corner radius         | trapezoid, parallelogram, right triangle, kite |
-| Star         | points, inner radius, corner radius          |                                                |
 | Gear         | teeth, tooth depth, hole                     |                                                |
 | Arrow        | head length, shaft thickness, corner radius  | arrow, arrowhead                               |
 | Chevron      | thickness, corner radius                     |                                                |
@@ -183,8 +206,9 @@ A small set of parametric shapes covers what used to be many fixed ones:
 
 A 4-sided polygon is an axis-aligned rectangle filling the layer's box, and
 every polygon has a flat bottom edge. Legacy ids such as `rect`, `hexagon`,
-`ring` or `trapezoid` are still accepted by `createShapeLayer()` and by loaded
-documents; they map onto the parametric shapes with matching parameters.
+`ring`, `trapezoid` or `star` are still accepted by `createShapeLayer()` and
+by loaded documents; they map onto the parametric shapes with matching
+parameters (and a `deform` or `edges` modifier where needed).
 
 Add your own — a shape is just a function from size to path data, centred on
 the origin:
@@ -363,7 +387,7 @@ editing aids. `editor.setPreview(true)` does the same; it emits
 | select inside a group         | strip corner button, or expand the group in the Layers panel |
 | move                          | hold then drag (direct mode: drag); Shift constrains to an axis; arrow keys nudge |
 | resize                        | corner/edge handles along the canvas axes (Shift keeps ratio, Alt from centre); `features.groupStretch: false` keeps group corners uniform |
-| rotate                        | handle on the ring around the shape (Shift snaps to 15°); the box is hidden while turning and recalculated on release |
+| rotate                        | handle on the ring around the shape (Shift snaps to 15°); the ring stays put and the box is hidden while turning, then both are re-fitted on release |
 | group / ungroup               | Ctrl+G / Ctrl+Shift+G                                  |
 | duplicate / delete            | Ctrl+D / Delete                                        |
 | reorder                       | `[` `]` (with Ctrl: to back / front); drag rows in the layer list |

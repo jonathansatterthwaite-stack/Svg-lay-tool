@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { colorLightness, grayHex, isGray, parseColor, recolor, toGray } from '../color';
-import { createDocument, createMaskSettings, createShapeLayer, insertLayer } from '../document';
+import { createDocument, createShapeLayer, insertLayer } from '../document';
+import { createEffectModifier, createMaskModifier, createModifier } from '../modifiers';
 import { createEffect, effectsForColorMode } from '../effects';
 import { renderDocumentToString } from '../render';
 
@@ -44,12 +45,15 @@ describe('renderer colour modes', () => {
     d = insertLayer(
       d,
       createShapeLayer({
-        fill: { type: 'linear', angle: 0, stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }] },
-        stroke: { color: '#00ff00', width: 2 },
-        effects: [createEffect('sepia'), createEffect('shadow', { color: '#ff00ff' })],
+        modifiers: [
+          createModifier('fill', { fill: { type: 'linear', angle: 0, stops: [{ offset: 0, color: '#ff0000' }, { offset: 1, color: '#0000ff' }] } }),
+          createModifier('stroke', { color: '#00ff00', width: 2 }),
+          createEffectModifier('sepia'),
+          createEffectModifier('shadow', { color: '#ff00ff' }),
+        ],
       }),
     );
-    d = insertLayer(d, createShapeLayer({ fill: { type: 'solid', color: '#4da3ff' }, mask: createMaskSettings({ mode: 'filter', effects: [createEffect('hue-rotate'), createEffect('blur')] }) }));
+    d = insertLayer(d, createShapeLayer({ color: '#4da3ff', modifiers: [createMaskModifier({ mode: 'filter', effects: [createEffect('hue-rotate'), createEffect('blur')] })] }));
     return d;
   }
 

@@ -5,6 +5,8 @@ export * from './matrix';
 export * from './vnode';
 export * from './shapes';
 export * from './effects';
+export * from './path';
+export * from './modifiers';
 export * from './document';
 export * from './render';
 export * from './store';

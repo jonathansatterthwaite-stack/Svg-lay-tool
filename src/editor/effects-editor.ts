@@ -40,27 +40,7 @@ export function effectsEditor(effects: Effect[], onChange: Change<Effect[]>, fea
     ]);
     const card = el('div', { class: 'slt-effect' }, [head]);
     if (!effect.enabled || unsupported) card.dataset.disabled = '';
-    if (unsupported) {
-      card.appendChild(el('div', { class: 'slt-hint' }, ['Not available in the current colour mode; ignored when rendering.']));
-    }
-    for (const p of def.params) {
-      const value = (effect as unknown as Record<string, number | string>)[p.key];
-      if (p.kind === 'color') {
-        const field = colorField(features.colorMode, String(value), (v, c) => replace({ [p.key]: v } as Partial<Effect>, c));
-        if (field) card.appendChild(row(p.label, field));
-      } else {
-        card.appendChild(
-          row(
-            p.label,
-            slider(Number(value), (v, c) => replace({ [p.key]: v } as Partial<Effect>, c), {
-              min: p.min ?? 0,
-              max: p.max ?? 100,
-              step: p.step ?? 1,
-            }),
-          ),
-        );
-      }
-    }
+    for (const r of effectParamRows(effect, (patch, c) => replace(patch, c), features)) card.appendChild(r);
     wrap.appendChild(card);
   });
   return wrap;
@@ -70,5 +50,33 @@ function swap<T>(arr: T[], a: number, b: number): T[] {
   if (b < 0 || b >= arr.length) return arr;
   const out = [...arr];
   [out[a], out[b]] = [out[b], out[a]];
+  return out;
+}
+
+/** Parameter rows for one effect (used by the effects list and by effect modifiers). */
+export function effectParamRows(effect: Effect, onChange: Change<Partial<Effect>>, features: EditorFeatures): HTMLElement[] {
+  const def = EFFECT_DEFS[effect.type];
+  const out: HTMLElement[] = [];
+  if (!allowedEffectTypes(features).includes(effect.type)) {
+    out.push(el('div', { class: 'slt-hint' }, ['Not available in the current colour mode; ignored when rendering.']));
+  }
+  for (const p of def.params) {
+    const value = (effect as unknown as Record<string, number | string>)[p.key];
+    if (p.kind === 'color') {
+      const field = colorField(features.colorMode, String(value), (v, c) => onChange({ [p.key]: v } as Partial<Effect>, c));
+      if (field) out.push(row(p.label, field));
+    } else {
+      out.push(
+        row(
+          p.label,
+          slider(Number(value), (v, c) => onChange({ [p.key]: v } as Partial<Effect>, c), {
+            min: p.min ?? 0,
+            max: p.max ?? 100,
+            step: p.step ?? 1,
+          }),
+        ),
+      );
+    }
+  }
   return out;
 }

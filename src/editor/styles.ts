@@ -269,6 +269,8 @@ input.slt-gray-range { background: linear-gradient(90deg, #000, #fff); border-ra
 
 .slt-effect { margin: 6px 0; padding: 6px 8px; background: var(--_slt-panel-2); border: 1px solid var(--_slt-border); border-radius: var(--_slt-radius); }
 .slt-effect[data-disabled] { opacity: 0.6; }
+.slt-modifier[data-type="mask"] { border-color: var(--_slt-accent); }
+.slt-modifiers-empty { padding: 8px 0; }
 .slt-effect-head { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
 .slt-effect-head .slt-grow { flex: 1; font-weight: 600; }
 .slt-effect .slt-row > label { flex-basis: 64px; }

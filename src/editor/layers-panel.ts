@@ -1,4 +1,4 @@
-import { locateLayer, moveLayer, type Layer } from '../core';
+import { hasMaskModifier, locateLayer, moveLayer, type Layer } from '../core';
 import { el } from './dom';
 import type { SvgLayEditor } from './editor';
 import { icon } from './icons';
@@ -118,7 +118,7 @@ export class LayersPanel {
         expander,
         el('span', { class: 'slt-type-icon' }, [icon(isGroup ? 'folder' : 'shape')]),
         name,
-        layer.mask ? el('span', { class: 'slt-badge', title: 'Mask' }, [icon('mask')]) : null,
+        hasMaskModifier(layer) ? el('span', { class: 'slt-badge', title: 'Mask' }, [icon('mask')]) : null,
         eye,
         lock,
       ],

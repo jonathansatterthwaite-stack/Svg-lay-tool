@@ -258,18 +258,22 @@ describe('document ops', () => {
     expect(doc.height).toBe(512);
     expect(doc.layers).toHaveLength(2);
     const star = doc.layers[0];
-    expect(star.type === 'shape' && star.fill).toEqual({ type: 'solid', color: '#f00' });
-    expect(star.type === 'shape' && star.params.points).toBe(5);
-    expect(star.effects).toHaveLength(1);
-    expect(star.effects[0]).toMatchObject({ type: 'blur', radius: 4, enabled: true });
+    // legacy fields are converted: solid fill → colour, effects → effect modifiers, star → polygon + edges
+    expect(star.type === 'shape' && star.color).toBe('#f00');
+    expect(star.type === 'shape' && star.shape).toBe('polygon');
+    expect(star.type === 'shape' && star.params.sides).toBe(5);
+    expect(star.modifiers.map((m) => m.type)).toEqual(['edges', 'effect']);
+    expect(star.modifiers[1]).toMatchObject({ type: 'effect', effect: { type: 'blur', radius: 4, enabled: true } });
     const g = doc.layers[1] as GroupLayer;
-    expect(g.mask!.mode).toBe('clip');
+    expect(g.modifiers[0]).toMatchObject({ type: 'mask', mode: 'clip' });
     expect(g.children[0].type === 'shape' && g.children[0].shape).toBe('polygon');
   });
 
   it('createShapeLayer merges params with defaults and resolves aliases', () => {
     const l = createShapeLayer({ shape: 'star', params: { points: 8 } });
-    expect(l.params).toEqual({ points: 8, inner: 45, radius: 0 });
+    expect(l.shape).toBe('polygon');
+    expect(l.params).toEqual({ sides: 8, radius: 0 });
+    expect(l.modifiers[0].type).toBe('edges');
     const legacy = createShapeLayer({ shape: 'hexagon' });
     expect(legacy.shape).toBe('polygon');
     expect(legacy.params.sides).toBe(6);

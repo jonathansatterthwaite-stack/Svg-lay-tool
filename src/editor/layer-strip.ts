@@ -1,4 +1,4 @@
-import { locateLayer, renderDocument, vnodeToDom, type Layer, type SvgDocument } from '../core';
+import { hasMaskModifier, locateLayer, renderDocument, vnodeToDom, type Layer, type SvgDocument } from '../core';
 import { el } from './dom';
 import type { SvgLayEditor } from './editor';
 import { icon } from './icons';
@@ -65,7 +65,7 @@ export class LayerStrip {
     if (selected) btn.dataset.selected = '';
     if (!layer.visible) btn.dataset.hidden = '';
     if (layer.locked) btn.dataset.locked = '';
-    if (layer.mask) btn.appendChild(el('span', { class: 'slt-thumb-badge' }, [icon('mask')]));
+    if (hasMaskModifier(layer)) btn.appendChild(el('span', { class: 'slt-thumb-badge' }, [icon('mask')]));
     btn.addEventListener('click', (e) => {
       if (e.shiftKey || e.ctrlKey || e.metaKey) ed.toggleSelect(layer.id);
       else ed.select([layer.id]);
@@ -96,12 +96,16 @@ export function soloDocument(doc: SvgDocument, id: string): SvgDocument {
     layers.map((l) => {
       const on = inside || keep.has(l.id);
       const isTarget = l.id === id;
+      // Inside the target keep modifiers; the target's own mask draws as its shape; ancestors just wrap.
+      const modifiers = isTarget
+        ? (l.modifiers ?? []).map((m) => (m.type === 'mask' ? { ...m, showShape: true } : m))
+        : inside
+          ? l.modifiers ?? []
+          : [];
       const base: Layer = {
         ...l,
         visible: on && l.visible,
-        // Inside the target keep masks working; on the path above it ignore masks so ancestors just wrap.
-        mask: isTarget && l.mask ? { ...l.mask, showShape: true } : inside ? l.mask : null,
-        effects: inside || isTarget ? l.effects : [],
+        modifiers,
         opacity: inside || isTarget ? l.opacity : 1,
       };
       if (base.type === 'group') return { ...base, children: walk(base.children, inside || isTarget) };
