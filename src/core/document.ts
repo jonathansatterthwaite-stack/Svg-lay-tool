@@ -703,6 +703,7 @@ export function normalizeVariable(input: unknown): Variable | null {
     min,
     max,
     step: Math.max(0, num(raw.step, 0.01)) || 0.01,
+    ...(typeof raw.expression === 'string' && raw.expression.trim() ? { expression: raw.expression } : {}),
   };
 }
 

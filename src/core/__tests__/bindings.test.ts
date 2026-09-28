@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { anchorAxes, anchorLocalPoint, applyBoundValue, bindableTargets, createBinding, type BindingError, createVariable, documentEnv, documentHasBindings, documentUsesTime, resolveDocument, timeEnv } from '../bindings';
+import { anchorAxes, anchorLocalPoint, applyBoundValue, bindableTargets, createBinding, type BindingError, createVariable, documentEnv, documentHasBindings, documentUsesTime, evaluateVariable, resolveDocument, timeEnv } from '../bindings';
 import { createDocument, createGroupLayer, createShapeLayer, insertLayer, layerWorldMatrix, normalizeDocument, setBinding, upsertVariable } from '../document';
 import { applyToPoint } from '../matrix';
 import { evaluate, ExprError, referencedNames } from '../expr';
@@ -95,6 +95,37 @@ describe('bindings', () => {
     const r2 = resolveDocument(upsertVariable(doc, { ...doc.variables![0], value: 3 }));
     const g2 = r2.layers[0];
     expect((g2.type === 'group' ? g2.children[0] : g2).visible).toBe(true);
+  });
+
+  it('computes variables from formulas in declaration order', () => {
+    let doc = createDocument({});
+    doc = upsertVariable(doc, createVariable({ name: 'base', value: 2 }));
+    doc = upsertVariable(doc, createVariable({ name: 'twice', value: 0, expression: 'base * 2' }));
+    doc = upsertVariable(doc, createVariable({ name: 'later', value: 7, expression: 'missing + 1' }));
+    const env = documentEnv(doc, { app: 5 });
+    expect(env.twice).toBe(4);
+    expect(env.later).toBe(7); // bad formula falls back to the stored value
+    // a host override of the source variable flows into the formula
+    expect(documentEnv(doc, { base: 10 }).twice).toBe(20);
+    // an override of the computed variable itself wins
+    expect(documentEnv(doc, { twice: 1 }).twice).toBe(1);
+    // formulas can use app variables and only the variables above them
+    expect(evaluateVariable(doc, { ...doc.variables![1], expression: 'base + app' }, { app: 5 })).toBe(7);
+    expect(() => evaluateVariable(doc, { ...doc.variables![0], expression: 'twice' })).toThrow();
+    expect(() => evaluateVariable(doc, doc.variables![2])).toThrow(/missing/);
+    // legacy / JSON round trip keeps the expression and drops blank ones
+    const round = normalizeDocument(JSON.parse(JSON.stringify({ ...doc, variables: [...doc.variables!, { name: 'blank', value: 1, expression: '  ' }] })));
+    expect(round.variables![1].expression).toBe('base * 2');
+    expect(round.variables![3].expression).toBeUndefined();
+  });
+
+  it('a binding using a time-derived variable animates', () => {
+    let doc = createDocument({});
+    doc = upsertVariable(doc, createVariable({ name: 'angle', value: 0, expression: 'seconds * 6' }));
+    const l = createShapeLayer({ shape: 'polygon', x: 0, y: 0, width: 10, height: 10 });
+    doc = insertLayer(doc, setBinding(l, createBinding('rotation', 'angle')));
+    expect(documentUsesTime(doc)).toBe(true);
+    expect(resolveDocument(doc, documentEnv(doc, {}, new Date(2024, 0, 1, 0, 0, 15))).layers[0].rotation).toBe(90);
   });
 
   it('detects time usage and lists bindable targets', () => {

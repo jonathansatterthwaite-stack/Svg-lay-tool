@@ -196,6 +196,14 @@ midnight), `dayFraction`, `weekday`, `date`, `month`, `year`, `t` (seconds
 since the document opened) and `now`. When a binding references one of them
 the editor redraws the canvas several times a second, so a clock ticks.
 
+A variable can itself be a **formula** instead of a slider: press **ƒ** on its
+card and type e.g. `seconds * 6` or `battery / 100`. The formula may use time,
+app variables and the variables declared above it; its result is what bindings
+see (`createVariable({ name: 'angle', expression: 'seconds * 6' })` in code).
+A formula that fails keeps the variable's last plain value, and a host override
+via `setVariables` wins over the formula. Bindings that use a time-derived
+variable animate just like ones that use time directly.
+
 A host app drives the picture with `editor.setVariables({ level: 0.4 })` (or
 `renderDocument(doc, { variables: { level: 0.4 }, time })` headlessly);
 overrides win over the document's slider values.
@@ -399,6 +407,7 @@ new SvgLayEditor(host: HTMLElement, options?: EditorOptions)
 | `layout`            | `'auto'` (default), `'desktop'` or `'mobile'`; see Mobile layout                |
 | `mobileBreakpoint`  | width in px below which `auto` uses the mobile layout (default 700)            |
 | `panels`            | `{ toolbar, library, layers, properties }` booleans to hide UI parts          |
+| `panelWidths`       | `{ library, side }` initial desktop panel widths in px (draggable)            |
 | `shapes`            | list of shape ids allowed in the library                                       |
 | `shadow`            | `false` to render into light DOM instead of a shadow root                      |
 | `onChange`          | called with the document after every committed change                          |
@@ -443,7 +452,11 @@ pointer.
 
 On desktop the side column keeps the Layers panel on top and organises the
 tools into tabs beneath it: Canvas, Layer, Modifiers and Variables (the same
-tabs the mobile bottom sheet uses, plus Shapes and Layers there).
+tabs the mobile bottom sheet uses, plus Shapes and Layers there). Drag the
+inner border of the shape library or the side column to resize it
+(double-click resets). Start from saved widths with the `panelWidths` option,
+read them with `getPanelWidths()`, set them with `setPanelWidths({ side: 320 })`
+and persist changes from the `panelresize` event.
 
 A **Preview** switch in the toolbar shows the image exactly as it will be
 produced: no handles, mask ghosts or editing aids. `editor.setPreview(true)`

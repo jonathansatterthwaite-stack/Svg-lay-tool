@@ -8,7 +8,10 @@ host.replaceChildren(); // remove the loading/fallback message
 const editor = new SvgLayEditor(host, {
   document: sampleDocument(),
   theme: (localStorage.getItem('slt-theme') as 'dark' | 'light' | 'auto' | null) ?? 'dark',
+  // Desktop panel widths the user dragged last time (see the panelresize listener below).
+  panelWidths: JSON.parse(localStorage.getItem('slt-panel-widths') ?? '{}'),
 });
+editor.on('panelresize', (w) => localStorage.setItem('slt-panel-widths', JSON.stringify(w)));
 
 // --- Host-app integration examples -------------------------------------------
 // 0. App variables: values the surrounding app exposes to formulas. They show up as a

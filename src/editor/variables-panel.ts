@@ -4,6 +4,7 @@ import {
   createBinding,
   createVariable,
   evaluate,
+  evaluateVariable,
   EXPR_FUNCTION_NAMES,
   removeBinding,
   removeVariable,
@@ -67,7 +68,7 @@ export class VariablesPanel {
     }, { cls: 'slt-small' });
     const children: (HTMLElement | null)[] = [];
     if (vars.length === 0) {
-      children.push(el('div', { class: 'slt-hint' }, ['Variables are numbers you (or the app using this editor) can change. Bind layer properties to formulas that use them.']));
+      children.push(el('div', { class: 'slt-hint' }, ['Variables are numbers you (or the app using this editor) can change, or formulas over time and other variables. Bind layer properties to formulas that use them.']));
     }
     for (const v of vars) children.push(this.variableCard(v, vars));
 
@@ -121,18 +122,67 @@ export class VariablesPanel {
       set({ name: clean });
     });
     nameInput.classList.add('slt-var-name');
+    const isFormula = v.expression !== undefined;
+    const formulaBtn = button(el('span', { class: 'slt-fx' }, ['ƒ']), () => {
+      if (isFormula) {
+        // Back to a plain value: keep whatever the formula currently produces, within the range.
+        let value = v.value;
+        try {
+          value = Math.min(v.max, Math.max(v.min, evaluateVariable(this.editor.document, v, this.editor.env())));
+        } catch {
+          /* keep the stored value */
+        }
+        const { expression: _drop, ...rest } = v;
+        this.commitDoc((d) => upsertVariable(d, { ...rest, value: Number.isFinite(value) ? value : v.value }));
+      } else {
+        set({ expression: String(v.value) });
+      }
+    }, { title: isFormula ? 'Use a fixed value (slider)' : 'Compute the value with a formula', cls: 'slt-small slt-icon-only slt-formula-toggle' });
+    if (isFormula) formulaBtn.dataset.active = '';
     const head = el('div', { class: 'slt-effect-head' }, [
       nameInput,
+      formulaBtn,
       button(icon('close'), () => this.commitDoc((d) => removeVariable(d, v.id)), { title: 'Remove variable', cls: 'slt-small slt-icon-only slt-danger' }),
     ]);
-    return el('div', { class: 'slt-effect slt-variable' }, [
-      head,
-      row('Value', slider(v.value, (val, c) => set({ value: val }, c), { min: v.min, max: v.max, step: v.step, digits: 3 })),
-      el('div', { class: 'slt-grid3' }, [
-        miniField('Min', numberInput(v.min, (n) => set({ min: Math.min(n, v.max), value: Math.max(n, v.value) }), { digits: 3 })),
-        miniField('Max', numberInput(v.max, (n) => set({ max: Math.max(n, v.min), value: Math.min(n, v.value) }), { digits: 3 })),
-        miniField('Step', numberInput(v.step, (n) => set({ step: Math.max(0.0001, n) }), { min: 0.0001, step: 0.01, digits: 4 })),
-      ]),
+    const body: (HTMLElement | null)[] = isFormula
+      ? [this.variableFormula(v)]
+      : [
+          row('Value', slider(v.value, (val, c) => set({ value: val }, c), { min: v.min, max: v.max, step: v.step, digits: 3 })),
+          el('div', { class: 'slt-grid3' }, [
+            miniField('Min', numberInput(v.min, (n) => set({ min: Math.min(n, v.max), value: Math.max(n, v.value) }), { digits: 3 })),
+            miniField('Max', numberInput(v.max, (n) => set({ max: Math.max(n, v.min), value: Math.min(n, v.value) }), { digits: 3 })),
+            miniField('Step', numberInput(v.step, (n) => set({ step: Math.max(0.0001, n) }), { min: 0.0001, step: 0.01, digits: 4 })),
+          ]),
+        ];
+    return el('div', { class: 'slt-effect slt-variable' }, [head, ...body]);
+  }
+
+  /** Formula input with a live result for a computed variable. */
+  private variableFormula(v: Variable): HTMLElement {
+    const doc = this.editor.document;
+    const overrides = this.editor.env();
+    const result = el('span', { class: 'slt-binding-result' });
+    const showResult = (expr: string) => {
+      try {
+        result.textContent = `= ${fmtValue(evaluateVariable(doc, { ...v, expression: expr }, overrides))}`;
+        result.classList.remove('slt-binding-error');
+      } catch (err) {
+        result.textContent = err instanceof Error ? err.message : String(err);
+        result.classList.add('slt-binding-error');
+      }
+    };
+    const input = el('input', { class: 'slt-input slt-binding-expr', type: 'text', value: v.expression ?? '', spellcheck: false, placeholder: 'formula' });
+    input.addEventListener('input', () => showResult(input.value));
+    input.addEventListener('change', () => this.commitDoc((d) => upsertVariable(d, { ...v, expression: input.value })));
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+      e.stopPropagation();
+    });
+    showResult(v.expression ?? '');
+    return el('div', { class: 'slt-variable-formula' }, [
+      el('div', { class: 'slt-row' }, [el('span', { class: 'slt-fx' }, ['ƒ']), input]),
+      result,
+      el('div', { class: 'slt-hint' }, ['Uses time, app variables and the variables above this one.']),
     ]);
   }
 

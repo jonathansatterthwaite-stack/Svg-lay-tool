@@ -89,9 +89,35 @@ function keepPointFixed<T extends Layer>(before: Layer, after: T, pBefore: { x: 
 /** Environment for a document: time built-ins, then the document's variables, then overrides. */
 export function documentEnv(doc: SvgDocument, overrides: Env = {}, at?: Date | number): Env {
   const env: Env = timeEnv(at);
-  for (const v of doc.variables ?? []) env[v.name] = v.value;
+  // Host values first so formulas can use app variables; a host override of a
+  // document variable also wins over that variable's own value or formula.
   Object.assign(env, overrides);
+  for (const v of doc.variables ?? []) {
+    if (v.name in overrides) continue;
+    env[v.name] = variableValue(v, env);
+  }
   return env;
+}
+
+/** Current value of a variable: its formula evaluated against `env` (falling back to `value` on error), or `value`. */
+export function variableValue(v: Variable, env: Env): number {
+  if (!v.expression?.trim()) return v.value;
+  try {
+    return evaluate(v.expression, env);
+  } catch {
+    return v.value;
+  }
+}
+
+/** Evaluate a variable's formula, throwing on error (for editor feedback). Variables after `v` are not visible to it. */
+export function evaluateVariable(doc: SvgDocument, v: Variable, overrides: Env = {}, at?: Date | number): number {
+  const env: Env = timeEnv(at);
+  Object.assign(env, overrides);
+  for (const o of doc.variables ?? []) {
+    if (o.id === v.id) break;
+    if (!(o.name in overrides)) env[o.name] = variableValue(o, env);
+  }
+  return evaluate(v.expression ?? String(v.value), env);
 }
 
 // ---------------------------------------------------------------------------
@@ -244,12 +270,18 @@ export function documentHasBindings(doc: SvgDocument): boolean {
 
 /** True when any binding references a time built-in, i.e. the picture changes on its own. */
 export function documentUsesTime(doc: SvgDocument): boolean {
+  // Names whose value changes with time: the built-ins plus any variable whose
+  // formula (transitively) depends on one of them.
+  const timeNames = new Set(TIME_VARIABLE_NAMES);
+  for (const v of doc.variables ?? []) {
+    if (v.expression?.trim() && referencedNames(v.expression).some((n) => timeNames.has(n))) timeNames.add(v.name);
+  }
   let found = false;
   const walk = (layers: Layer[]) => {
     for (const l of layers) {
       if (found) return;
       for (const b of l.bindings ?? []) {
-        if (b.enabled && referencedNames(b.expression).some((n) => TIME_VARIABLE_NAMES.includes(n))) found = true;
+        if (b.enabled && referencedNames(b.expression).some((n) => timeNames.has(n))) found = true;
       }
       if (l.type === 'group') walk(l.children);
     }

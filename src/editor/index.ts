@@ -1,4 +1,4 @@
-export { SvgLayEditor, type EditorOptions, type EditorEvents, type ViewState, type MobileTab, type AppVariable, type VariableGroup } from './editor';
+export { SvgLayEditor, type EditorOptions, type EditorEvents, type ViewState, type MobileTab, type AppVariable, type VariableGroup, type PanelWidths } from './editor';
 export { SvgLayEditorElement, defineSvgLayEditor } from './element';
 export { EDITOR_STYLES } from './styles';
 export {

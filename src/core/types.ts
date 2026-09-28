@@ -195,6 +195,12 @@ export interface Variable {
   min: number;
   max: number;
   step: number;
+  /**
+   * Optional formula computing the value from time, app variables and the
+   * variables declared before this one, e.g. `minutes / 60`. When set (and it
+   * evaluates), it replaces `value`; on an error the last `value` is used.
+   */
+  expression?: string;
 }
 
 /** A layer property driven by an expression, e.g. `{ target: 'rotation', expression: 'hours12 * 30 + minutes / 2' }`. */

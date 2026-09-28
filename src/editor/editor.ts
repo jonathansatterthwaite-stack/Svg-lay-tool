@@ -72,6 +72,11 @@ export interface EditorOptions {
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
   /**
+   * Initial widths (px) of the desktop side panels; the user can drag their
+   * borders. Listen to `panelresize` to persist the result.
+   */
+  panelWidths?: Partial<PanelWidths>;
+  /**
    * `desktop`: side panels. `mobile`: canvas on top with a tabbed bottom sheet
    * (Shapes / Layers / Canvas / Layer). `auto` (default) picks by the editor's
    * own width, switching below `mobileBreakpoint`.
@@ -117,7 +122,19 @@ export interface EditorEvents extends Record<string, unknown[]> {
   viewchange: [view: ViewState];
   previewchange: [on: boolean];
   snapchange: [on: boolean];
+  panelresize: [widths: PanelWidths];
 }
+
+/** Widths (px) of the desktop panels: the shape library and the side panel. */
+export interface PanelWidths {
+  library: number;
+  side: number;
+}
+
+const DEFAULT_PANEL_WIDTHS: PanelWidths = { library: 200, side: 280 };
+const PANEL_MIN: PanelWidths = { library: 140, side: 220 };
+/** Room the canvas always keeps between the panels. */
+const CANVAS_MIN_WIDTH = 240;
 
 function cloneGroup(g: VariableGroup): VariableGroup {
   return { id: g.id, title: g.title, variables: g.variables.map((v) => ({ ...v })) };
@@ -154,6 +171,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private sheetOpen = true;
   private currentLayout: 'desktop' | 'mobile' | null = null;
   private layoutObserver: ResizeObserver | null = null;
+  private panelWidths: PanelWidths = { ...DEFAULT_PANEL_WIDTHS };
   private toolbar: Toolbar | null = null;
   private library: LibraryPanel | null = null;
   private layersPanel: LayersPanel | null = null;
@@ -192,6 +210,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (!panels.toolbar) this.rootEl.dataset.noToolbar = '';
     if (!panels.library) this.rootEl.dataset.noLibrary = '';
     if (!panels.layers && !panels.properties) this.rootEl.dataset.noSide = '';
+    this.setPanelWidths(options.panelWidths ?? {}, false);
 
     if (panels.toolbar) this.toolbar = new Toolbar(this);
     if (panels.library) this.library = new LibraryPanel(this);
@@ -279,12 +298,15 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       this.sheetEl = el('div', { class: 'slt-sheet' });
     };
     if (mode === 'desktop') {
-      if (this.library) this.rootEl.appendChild(this.library.el);
+      if (this.library) {
+        this.rootEl.appendChild(this.library.el);
+        this.library.el.appendChild(this.panelResizer('library'));
+      }
       this.rootEl.appendChild(this.canvas.el);
       if (this.layersPanel || this.propsPanel) {
         // Layers stay visible; the tool panels share a tabbed area beneath them.
         buildTabs(['canvas', 'layer', 'modifiers', 'variables']);
-        this.sideEl = el('div', { class: 'slt-side' }, [this.layersPanel?.el ?? null, this.tabsEl, this.sheetEl]);
+        this.sideEl = el('div', { class: 'slt-side' }, [this.layersPanel?.el ?? null, this.tabsEl, this.sheetEl, this.panelResizer('side')]);
         this.rootEl.appendChild(this.sideEl);
         if (!this.tabButtons.has(this.activeTab)) this.activeTab = this.selection.length ? 'layer' : 'canvas';
         this.showTab(this.activeTab, true);
@@ -301,6 +323,74 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     requestAnimationFrame(() => {
       if (!this.destroyed) this.canvas.fitToView();
     });
+  }
+
+  /** Current widths of the desktop panels. */
+  getPanelWidths(): PanelWidths {
+    return { ...this.panelWidths };
+  }
+
+  /** Set the desktop panel widths (px); values are clamped so the canvas keeps some room. */
+  setPanelWidths(widths: Partial<PanelWidths>, notify = true): void {
+    const next = { ...this.panelWidths, ...widths };
+    for (const k of ['library', 'side'] as const) {
+      const w = next[k];
+      next[k] = Number.isFinite(w) ? Math.max(PANEL_MIN[k], Math.round(w)) : DEFAULT_PANEL_WIDTHS[k];
+    }
+    // Never let the two panels squeeze the canvas out (when the editor has a measurable width).
+    const total = this.rootEl.clientWidth;
+    if (total > 0) {
+      const hasLibrary = !!this.library && this.rootEl.dataset.noLibrary === undefined;
+      const hasSide = (!!this.layersPanel || !!this.propsPanel) && this.rootEl.dataset.noSide === undefined;
+      const spare = total - CANVAS_MIN_WIDTH - (hasLibrary ? PANEL_MIN.library : 0) - (hasSide ? PANEL_MIN.side : 0);
+      if (spare > 0) {
+        if (hasLibrary) next.library = Math.min(next.library, PANEL_MIN.library + Math.max(0, spare - (hasSide ? next.side - PANEL_MIN.side : 0)));
+        if (hasSide) next.side = Math.min(next.side, PANEL_MIN.side + Math.max(0, spare - (hasLibrary ? next.library - PANEL_MIN.library : 0)));
+      }
+    }
+    const changed = next.library !== this.panelWidths.library || next.side !== this.panelWidths.side;
+    this.panelWidths = next;
+    this.rootEl.style.setProperty('--_slt-library-w', `${next.library}px`);
+    this.rootEl.style.setProperty('--_slt-side-w', `${next.side}px`);
+    if (changed && notify) this.emit('panelresize', this.getPanelWidths());
+  }
+
+  /** A draggable border on a desktop panel; double-click restores the default width. */
+  private panelResizer(panel: keyof PanelWidths): HTMLElement {
+    const handle = el('div', { class: 'slt-resizer', dataset: { panel }, title: 'Drag to resize · double-click to reset' });
+    let startX = 0;
+    let startW = 0;
+    const move = (e: PointerEvent) => {
+      const dx = e.clientX - startX;
+      this.setPanelWidths({ [panel]: startW + (panel === 'library' ? dx : -dx) } as Partial<PanelWidths>, false);
+    };
+    const end = (e: PointerEvent) => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      delete handle.dataset.active;
+      delete this.rootEl.dataset.resizing;
+      if (handle.hasPointerCapture(e.pointerId)) handle.releasePointerCapture(e.pointerId);
+      this.emit('panelresize', this.getPanelWidths());
+      this.canvas.fitToView();
+    };
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startW = this.panelWidths[panel];
+      handle.dataset.active = '';
+      this.rootEl.dataset.resizing = '';
+      handle.setPointerCapture(e.pointerId);
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', end);
+      handle.addEventListener('pointercancel', end);
+    });
+    handle.addEventListener('dblclick', () => {
+      this.setPanelWidths({ [panel]: DEFAULT_PANEL_WIDTHS[panel] } as Partial<PanelWidths>);
+      this.canvas.fitToView();
+    });
+    return handle;
   }
 
   /** Mobile layout: show a tab in the bottom sheet. */
