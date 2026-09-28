@@ -688,11 +688,14 @@ function normalizeBinding(input: unknown): Binding | null {
   if (!input || typeof input !== 'object') return null;
   const raw = input as Record<string, unknown>;
   if (typeof raw.target !== 'string' || typeof raw.expression !== 'string') return null;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const rawAnchor = raw.anchor as Record<string, unknown> | undefined;
   return {
     id: typeof raw.id === 'string' ? raw.id : createId('b'),
     target: raw.target,
     expression: raw.expression,
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
+    ...(rawAnchor && typeof rawAnchor === 'object' ? { anchor: { x: num(rawAnchor.x, 0.5), y: num(rawAnchor.y, 0.5) } } : {}),
   };
 }
 

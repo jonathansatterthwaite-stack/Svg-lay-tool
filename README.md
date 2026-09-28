@@ -174,6 +174,13 @@ const water = setBinding(
 const hourHand = setBinding(createGroupLayer({ name: 'Hour hand', x: 256, y: 256, children: [bar] }), createBinding('rotation', 'hours12 * 30 + minutes / 2'));
 ```
 
+Rotation, size and scale bindings take an **anchor**: the point of the layer
+box (as fractions, 0.5/0.5 = centre) that stays put. A clock hand rotates
+about its base (`anchor: { x: 0.5, y: 1 }`), water grows upward from the
+bottom of its window (height with `y: 1`), a group scales about a corner.
+Pick a preset or drag the marker on the canvas while the Variables tab is
+open (Shift snaps to edges and centre).
+
 Bindable targets: `x`, `y`, `rotation`, `opacity`, `visible`, shape `width`
 and `height`, group `scale`, shape `params.<key>`, and every numeric field or
 `enabled` flag of a modifier (`modifiers.<id>.<field>`), so a mask, an effect
@@ -413,6 +420,10 @@ pointer.
   what is about to resize or rotate.
 - **Direct mode** (`'direct'`): dragging the selected layer moves it straight
   away; dragging anywhere else pans.
+
+On desktop the side column keeps the Layers panel on top and organises the
+tools into tabs beneath it: Canvas, Layer, Modifiers and Variables (the same
+tabs the mobile bottom sheet uses, plus Shapes and Layers there).
 
 A **Preview** switch at the top of the Layers panel (and Layers tab on mobile)
 shows the image exactly as it will be produced: no handles, mask ghosts or

@@ -164,17 +164,16 @@ export function sampleClock(): SvgDocument {
       return { ...tick, x: Math.sin(a) * 180, y: -Math.cos(a) * 180, rotation: i * 30 };
     }),
   });
-  const hand = (name: string, length: number, width: number, color: string, expr: string) =>
-    setBinding(
-      createGroupLayer({
-        name,
-        x: 256,
-        y: 256,
-        children: [createShapeLayer({ name: `${name} bar`, shape: 'polygon', params: { sides: 4 }, x: 0, y: -length / 2 + 14, width, height: length, color,
-          modifiers: [createModifier('round', { radius: 100 })] })],
-      }),
-      createBinding('rotation', expr),
+  // Each hand is a single bar; its rotation binding pivots about a point near the bar's bottom end,
+  // which sits on the clock centre.
+  const hand = (name: string, length: number, width: number, color: string, expr: string) => {
+    const pivotFromBottom = 14;
+    return setBinding(
+      createShapeLayer({ name, shape: 'polygon', params: { sides: 4 }, x: 256, y: 256 - length / 2 + pivotFromBottom, width, height: length, color,
+        modifiers: [createModifier('round', { radius: 100 })] }),
+      createBinding('rotation', expr, { x: 0.5, y: 1 - pivotFromBottom / length }),
     );
+  };
   const hourHand = hand('Hour hand', 130, 14, '#2b2f3a', 'hours12 * 30 + minutes / 2');
   const minuteHand = hand('Minute hand', 180, 10, '#2b2f3a', 'minutes * 6 + seconds / 10');
   const secondHand = hand('Second hand', 200, 4, '#e0402a', 'mod(time, 60) * 6');
@@ -182,9 +181,10 @@ export function sampleClock(): SvgDocument {
     modifiers: [createModifier('stroke', { color: '#f4f1ea', width: 3 })] });
   // A "water level" gauge on the face: a rectangle whose height follows a variable, clipped by a rounded window.
   const level = createVariable({ name: 'level', value: 0.6, min: 0, max: 1, step: 0.01 });
+  // The water grows upward from the bottom edge of the window thanks to the height binding's anchor.
   const water = setBinding(
-    setBinding(createShapeLayer({ name: 'Water', shape: 'polygon', params: { sides: 4 }, x: 256, y: 356, width: 60, height: 40, color: '#4da3ff' }), createBinding('height', 'level * 60')),
-    createBinding('y', '386 - level * 30'),
+    createShapeLayer({ name: 'Water', shape: 'polygon', params: { sides: 4 }, x: 256, y: 356, width: 60, height: 60, color: '#4da3ff' }),
+    createBinding('height', 'level * 60', { x: 0.5, y: 1 }),
   );
   const window = createShapeLayer({ name: 'Gauge window', shape: 'polygon', params: { sides: 4 }, x: 256, y: 356, width: 60, height: 60, color: '#ffffff',
     modifiers: [createModifier('round', { radius: 40 }), createMaskModifier({ mode: 'clip' })] });

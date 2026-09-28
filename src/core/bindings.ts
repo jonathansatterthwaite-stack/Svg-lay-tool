@@ -5,6 +5,8 @@
  */
 import { evaluate, referencedNames, type Env } from './expr';
 import { createId } from './ids';
+import { layerLinear, layerLocalBounds, rotateLayer } from './document';
+import { applyToVector } from './matrix';
 import { MODIFIER_DEFS } from './modifiers';
 import type { Binding, Layer, Modifier, SvgDocument, Variable } from './types';
 
@@ -52,8 +54,36 @@ export function createVariable(init: Partial<Variable> = {}): Variable {
   return { id: createId('v'), name: 'value', value: 0.5, min: 0, max: 1, step: 0.01, ...init };
 }
 
-export function createBinding(target: string, expression: string): Binding {
-  return { id: createId('b'), target, expression, enabled: true };
+export function createBinding(target: string, expression: string, anchor?: { x: number; y: number }): Binding {
+  return { id: createId('b'), target, expression, enabled: true, ...(anchor ? { anchor } : {}) };
+}
+
+/** Which anchor axes a target uses: rotation and scale both, width only x, height only y. */
+export function anchorAxes(target: string): 'xy' | 'x' | 'y' | null {
+  switch (target) {
+    case 'rotation':
+    case 'scale':
+      return 'xy';
+    case 'width':
+      return 'x';
+    case 'height':
+      return 'y';
+    default:
+      return null;
+  }
+}
+
+/** The anchor as a point in the layer's local (pre-transform) coordinates. */
+export function anchorLocalPoint(layer: Layer, anchor: { x: number; y: number } = { x: 0.5, y: 0.5 }): { x: number; y: number } {
+  const b = layerLocalBounds(layer) ?? { x: 0, y: 0, width: 0, height: 0 };
+  return { x: b.x + b.width * anchor.x, y: b.y + b.height * anchor.y };
+}
+
+/** Move a layer so that the local point `p` (of `before`) stays at the same parent position in `after`. */
+function keepPointFixed<T extends Layer>(before: Layer, after: T, pBefore: { x: number; y: number }, pAfter: { x: number; y: number }): T {
+  const w0 = applyToVector(layerLinear(before), pBefore);
+  const w1 = applyToVector(layerLinear(after), pAfter);
+  return { ...after, x: after.x + (w0.x - w1.x), y: after.y + (w0.y - w1.y) };
 }
 
 /** Environment for a document: time built-ins, then the document's variables, then overrides. */
@@ -105,8 +135,26 @@ export function bindableTargets(layer: Layer): BindableTarget[] {
   return out;
 }
 
-/** Write a bound value into a layer copy. Unknown targets are ignored. */
-export function applyBoundValue(layer: Layer, target: string, value: number): Layer {
+/**
+ * Write a bound value into a layer copy. Unknown targets are ignored. For
+ * rotation, size and scale the optional anchor (box fractions) is the point
+ * that stays put.
+ */
+export function applyBoundValue(layer: Layer, target: string, value: number, anchor?: { x: number; y: number }): Layer {
+  const a = anchor ?? { x: 0.5, y: 0.5 };
+  if (target === 'rotation') {
+    const p = anchorLocalPoint(layer, a);
+    return keepPointFixed(layer, rotateLayer(layer, value), p, p);
+  }
+  if ((target === 'width' || target === 'height') && layer.type === 'shape') {
+    const next = { ...layer, [target]: Math.max(0, value) };
+    return keepPointFixed(layer, next, anchorLocalPoint(layer, a), anchorLocalPoint(next, a));
+  }
+  if (target === 'scale' && layer.type === 'group') {
+    const next = { ...layer, scale: Math.max(0.0001, value) };
+    const p = anchorLocalPoint(layer, a);
+    return keepPointFixed(layer, next, p, p);
+  }
   const parts = target.split('.');
   if (parts[0] === 'modifiers' && parts.length >= 3) {
     const [, id, ...rest] = parts;
@@ -171,7 +219,7 @@ export function resolveDocument(
       for (const b of l.bindings ?? []) {
         if (!b.enabled || !b.expression.trim()) continue;
         try {
-          out = applyBoundValue(out, b.target, evaluate(b.expression, env));
+          out = applyBoundValue(out, b.target, evaluate(b.expression, env), b.anchor);
         } catch (err) {
           errors?.push({ layerId: l.id, bindingId: b.id, message: err instanceof Error ? err.message : String(err) });
         }

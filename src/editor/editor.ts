@@ -230,34 +230,41 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (this.propsPanel) this.propsPanel.mode = 'auto';
 
     if (this.toolbar) this.rootEl.appendChild(this.toolbar.el);
-    if (mode === 'desktop') {
-      if (this.library) this.rootEl.appendChild(this.library.el);
-      this.rootEl.appendChild(this.canvas.el);
-      if (this.layersPanel || this.propsPanel) {
-        this.sideEl = el('div', { class: 'slt-side' }, [this.layersPanel?.el ?? null, this.propsPanel?.el ?? null]);
-        this.rootEl.appendChild(this.sideEl);
-      }
-    } else {
-      this.rootEl.appendChild(this.canvas.el);
-      this.sheetEl = el('div', { class: 'slt-sheet' });
+    const allTabs: { id: MobileTab; label: string; ic: Parameters<typeof icon>[0]; show: boolean }[] = [
+      { id: 'shapes', label: 'Shapes', ic: 'shape', show: !!this.library },
+      { id: 'layers', label: 'Layers', ic: 'folder', show: !!this.layersPanel },
+      { id: 'canvas', label: 'Canvas', ic: 'fit', show: !!this.propsPanel },
+      { id: 'layer', label: 'Layer', ic: 'settings', show: !!this.propsPanel },
+      { id: 'modifiers', label: 'Modifiers', ic: 'modifiers', show: !!this.propsPanel },
+      { id: 'variables', label: 'Variables', ic: 'variables', show: !!this.propsPanel && this.features.variables },
+    ];
+    const buildTabs = (ids: MobileTab[]) => {
       this.tabsEl = el('div', { class: 'slt-tabs', role: 'tablist' });
-      const tabs: { id: MobileTab; label: string; ic: Parameters<typeof icon>[0]; show: boolean }[] = [
-        { id: 'shapes', label: 'Shapes', ic: 'shape', show: !!this.library },
-        { id: 'layers', label: 'Layers', ic: 'folder', show: !!this.layersPanel },
-        { id: 'canvas', label: 'Canvas', ic: 'fit', show: !!this.propsPanel },
-        { id: 'layer', label: 'Layer', ic: 'settings', show: !!this.propsPanel },
-        { id: 'modifiers', label: 'Modifiers', ic: 'modifiers', show: !!this.propsPanel },
-        { id: 'variables', label: 'Variables', ic: 'variables', show: !!this.propsPanel && this.features.variables },
-      ];
-      for (const t of tabs) {
-        if (!t.show) continue;
+      for (const t of allTabs) {
+        if (!t.show || !ids.includes(t.id)) continue;
         const b = el('button', { class: 'slt-tab', type: 'button', role: 'tab', dataset: { tab: t.id } }, [icon(t.ic), el('span', {}, [t.label])]);
         b.addEventListener('click', () => this.toggleTab(t.id));
         this.tabButtons.set(t.id, b);
         this.tabsEl.appendChild(b);
       }
-      this.rootEl.appendChild(this.sheetEl);
-      this.rootEl.appendChild(this.tabsEl);
+      this.sheetEl = el('div', { class: 'slt-sheet' });
+    };
+    if (mode === 'desktop') {
+      if (this.library) this.rootEl.appendChild(this.library.el);
+      this.rootEl.appendChild(this.canvas.el);
+      if (this.layersPanel || this.propsPanel) {
+        // Layers stay visible; the tool panels share a tabbed area beneath them.
+        buildTabs(['canvas', 'layer', 'modifiers', 'variables']);
+        this.sideEl = el('div', { class: 'slt-side' }, [this.layersPanel?.el ?? null, this.tabsEl, this.sheetEl]);
+        this.rootEl.appendChild(this.sideEl);
+        if (!this.tabButtons.has(this.activeTab)) this.activeTab = this.selection.length ? 'layer' : 'canvas';
+        this.showTab(this.activeTab, true);
+      }
+    } else {
+      this.rootEl.appendChild(this.canvas.el);
+      buildTabs(['shapes', 'layers', 'canvas', 'layer', 'modifiers', 'variables']);
+      this.rootEl.appendChild(this.sheetEl!);
+      this.rootEl.appendChild(this.tabsEl!);
       if (!this.tabButtons.has(this.activeTab)) this.activeTab = this.tabButtons.keys().next().value ?? 'shapes';
       this.showTab(this.activeTab);
     }
@@ -302,14 +309,21 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     } else {
       this.rootEl.dataset.sheetClosed = '';
     }
+    this.canvas.renderOverlay();
     requestAnimationFrame(() => {
       if (!this.destroyed) this.canvas.renderOverlay();
     });
   }
 
   private toggleTab(tab: MobileTab): void {
-    if (this.activeTab === tab && this.sheetOpen) this.showTab(tab, false);
+    // Desktop tabs cannot collapse (the side column keeps its width); mobile ones can.
+    if (this.layout === 'mobile' && this.activeTab === tab && this.sheetOpen) this.showTab(tab, false);
     else this.showTab(tab, true);
+  }
+
+  /** True while the given tool tab is the visible one (either layout). */
+  isTabOpen(tab: MobileTab): boolean {
+    return this.sheetOpen && this.activeTab === tab && this.tabButtons.has(tab);
   }
 
   // -------------------------------------------------------------------------
@@ -367,8 +381,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     const same = ids.length === this.selection.length && ids.every((id, i) => id === this.selection[i]);
     if (same) return;
     this.selection = ids;
-    // On mobile, selecting something while looking at canvas settings jumps to the layer settings.
-    if (this.layout === 'mobile' && ids.length && this.activeTab === 'canvas' && this.sheetOpen) this.showTab('layer');
+    // Selecting something while looking at canvas settings jumps to the layer settings.
+    if (ids.length && this.activeTab === 'canvas' && this.sheetOpen && this.tabButtons.has('layer')) this.showTab('layer');
     this.refresh(false);
     this.emit('selectionchange', ids);
     this.options.onSelectionChange?.(ids);
@@ -435,7 +449,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     });
     this.store.commit((d) => insertLayer(d, layer, parentId, index));
     this.select([layer.id]);
-    if (this.layout === 'mobile' && this.tabButtons.has('layer')) this.showTab('layer');
+    if (this.tabButtons.has('layer')) this.showTab('layer');
     return layer.id;
   }
 
@@ -684,7 +698,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.toolbar?.render();
     this.layersPanel?.render();
     this.propsPanel?.render();
-    if (this.layout === 'mobile' && this.sheetOpen) {
+    if (this.sheetOpen) {
       if (this.activeTab === 'modifiers') this.modifiersPanel?.render();
       if (this.activeTab === 'variables') this.variablesPanel?.render();
     }

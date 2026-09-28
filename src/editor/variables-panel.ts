@@ -1,4 +1,5 @@
 import {
+  anchorAxes,
   bindableTargets,
   createBinding,
   createVariable,
@@ -12,7 +13,9 @@ import {
   upsertVariable,
   type Binding,
   type Layer,
+  type SvgDocument,
   type Variable,
+  updateLayer,
 } from '../core';
 import { el, isTypingInside } from './dom';
 import type { SvgLayEditor } from './editor';
@@ -181,9 +184,43 @@ export class VariablesPanel {
     });
     showResult(b.expression);
     const card = el('div', { class: 'slt-effect slt-binding' }, [head, el('div', { class: 'slt-row' }, [el('span', { class: 'slt-fx' }, ['ƒ']), input]), result]);
+    const axes = anchorAxes(b.target);
+    if (axes) {
+      const anchor = b.anchor ?? { x: 0.5, y: 0.5 };
+      const setAnchor = (p: Partial<{ x: number; y: number }>, commit: boolean) => {
+        const next = { ...anchor, ...p };
+        const fn = (l: Layer) => setBinding(l, { ...b, anchor: next });
+        const store = this.editor.store;
+        if (!commit) {
+          store.beginTransaction();
+          store.update((d) => updateLayerIn(d, layer.id, fn));
+        } else {
+          store.update((d) => updateLayerIn(d, layer.id, fn));
+          store.endTransaction();
+        }
+      };
+      const what = b.target === 'rotation' ? 'Pivot' : b.target === 'scale' ? 'Scale about' : 'Fixed edge';
+      const fields: HTMLElement[] = [];
+      if (axes.includes('x')) fields.push(row(`${what} X %`, slider(anchor.x * 100, (v, c) => setAnchor({ x: v / 100 }, c), { min: -50, max: 150, step: 1 })));
+      if (axes.includes('y')) fields.push(row(`${what} Y %`, slider(anchor.y * 100, (v, c) => setAnchor({ y: v / 100 }, c), { min: -50, max: 150, step: 1 })));
+      const presets = el('div', { class: 'slt-anchor-presets' });
+      const points: [number, number, string][] = [[0, 0, 'top left'], [0.5, 0, 'top'], [1, 0, 'top right'], [0, 0.5, 'left'], [0.5, 0.5, 'centre'], [1, 0.5, 'right'], [0, 1, 'bottom left'], [0.5, 1, 'bottom'], [1, 1, 'bottom right']];
+      for (const [px, py, title] of points) {
+        const dot = el('button', { class: 'slt-anchor-preset', type: 'button', title });
+        if (Math.abs(anchor.x - px) < 1e-6 && Math.abs(anchor.y - py) < 1e-6) dot.dataset.active = '';
+        dot.addEventListener('click', () => setAnchor({ x: axes.includes('x') ? px : anchor.x, y: axes.includes('y') ? py : anchor.y }, true));
+        presets.appendChild(dot);
+      }
+      card.appendChild(el('div', { class: 'slt-row slt-anchor-row' }, [el('label', {}, [what]), presets, el('div', { class: 'slt-grow' }, fields)]));
+      card.appendChild(el('div', { class: 'slt-hint' }, ['0 % is the left/top of the layer box, 100 % the right/bottom. Drag the marker on the canvas while this tab is open.']));
+    }
     if (!b.enabled) card.dataset.disabled = '';
     return card;
   }
+}
+
+function updateLayerIn(doc: SvgDocument, id: string, fn: (l: Layer) => Layer): SvgDocument {
+  return updateLayer(doc, id, fn);
 }
 
 function fmtValue(v: number | undefined): string {

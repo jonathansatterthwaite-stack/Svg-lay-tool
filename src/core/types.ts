@@ -204,6 +204,13 @@ export interface Binding {
   target: string;
   expression: string;
   enabled: boolean;
+  /**
+   * Reference point for rotation, size and scale bindings, as fractions of
+   * the layer's box (0,0 = top-left, 0.5,0.5 = centre, 1,1 = bottom-right).
+   * Rotation turns about it; a height binding grows away from it; a scale
+   * binding scales about it. Default centre.
+   */
+  anchor?: { x: number; y: number };
 }
 
 /** 2×2 linear map (no translation): [a c; b d]. */

@@ -1,6 +1,11 @@
 import {
   applyToPoint,
   applyToVector,
+  anchorAxes,
+  anchorLocalPoint,
+  layerWorldMatrix,
+  layerLocalBounds,
+  setBinding,
   findLayer,
   invert,
   layerFrameBounds,
@@ -56,7 +61,8 @@ type DragState =
   | { kind: 'rotate'; id: string; origDoc: SvgDocument; layer: Layer; pivotWorld: Point; startAngle: number; ringR: number }
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
-  | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> };
+  | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> }
+  | { kind: 'anchor'; id: string; bindingId: string; localInv: Mat; box: Rect };
 
 let instanceCounter = 0;
 
@@ -292,6 +298,7 @@ export class CanvasView {
     if (ed.selection.length === 1) {
       const f = this.screenFrame(ed.selection[0]);
       if (f && !f.layer.locked) this.renderHandles(f);
+      if (ed.isTabOpen('variables')) this.renderAnchors(ed.selection[0]);
     }
 
   }
@@ -357,6 +364,28 @@ export class CanvasView {
       this.overlay.appendChild(svgEl('circle', { class: 'slt-pivot', cx: piv.x, cy: piv.y, r: 4, fill: 'none' }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-pivot', x1: piv.x - 7, y1: piv.y, x2: piv.x + 7, y2: piv.y }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-pivot', x1: piv.x, y1: piv.y - 7, x2: piv.x, y2: piv.y + 7 }));
+    }
+  }
+
+  /** Markers for binding anchors (pivot / fixed edge) of the selected layer, drawn from the resolved geometry. */
+  private renderAnchors(id: string): void {
+    // Anchors are points of the stored (unbound) layer; the binding keeps them fixed,
+    // so their position is taken from the unresolved geometry.
+    const doc = this.editor.document;
+    const layer = findLayer(doc, id);
+    if (!layer) return;
+    const world = layerWorldMatrix(doc, id);
+    for (const b of layer.bindings ?? []) {
+      const axes = anchorAxes(b.target);
+      if (!axes || !b.enabled) continue;
+      const p = this.worldToScreen(applyToPoint(world, anchorLocalPoint(layer, b.anchor)));
+      const r = this.coarse ? 10 : 6;
+      this.overlay.appendChild(svgEl('circle', { class: 'slt-anchor-ring', cx: p.x, cy: p.y, r: r + 5 }));
+      this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x - r - 9, y1: p.y, x2: p.x + r + 9, y2: p.y }));
+      this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x, y1: p.y - r - 9, x2: p.x, y2: p.y + r + 9 }));
+      this.overlay.appendChild(svgEl('circle', { class: 'slt-anchor', cx: p.x, cy: p.y, r, 'data-handle': `anchor:${b.id}` }));
+      const label = b.target === 'rotation' ? 'pivot' : b.target === 'scale' ? 'scale about' : `${b.target} from`;
+      this.overlay.appendChild(svgEl('text', { class: 'slt-anchor-label', x: p.x + r + 12, y: p.y - 6 }, [label]));
     }
   }
 
@@ -428,6 +457,12 @@ export class CanvasView {
     const handleEl = e.target instanceof Element ? e.target.closest('[data-handle]') : null;
     if (handleEl && this.editor.selection.length === 1) {
       const name = handleEl.getAttribute('data-handle')!;
+      if (name.startsWith('anchor:')) {
+        this.startAnchorDrag(name.slice(7));
+        this.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
       this.startHandleDrag(name, screen);
       if (this.drag) {
         // Light the handle up so the user can see what they are about to change.
@@ -502,6 +537,16 @@ export class CanvasView {
     if (!items.length) return;
     this.editor.store.beginTransaction();
     this.drag = { kind: 'move', startWorld: this.screenToWorld(screen), origDoc: doc, items, moved: false };
+  }
+
+  private startAnchorDrag(bindingId: string): void {
+    const id = this.editor.selection[0];
+    const doc = this.editor.document; // unresolved frame, see renderAnchors
+    const layer = findLayer(doc, id);
+    const box = layer ? layerLocalBounds(layer) : null;
+    if (!layer || !box) return;
+    this.editor.store.beginTransaction();
+    this.drag = { kind: 'anchor', id, bindingId, localInv: invert(layerWorldMatrix(doc, id)), box };
   }
 
   private startHandleDrag(handle: string, screen: Point): void {
@@ -588,6 +633,28 @@ export class CanvasView {
         this.applyScale(d, this.screenToWorld(screen), e.shiftKey, e.altKey);
         break;
       }
+      case 'anchor': {
+        // Pointer → the layer's local space → box fractions.
+        const local = applyToPoint(d.localInv, this.screenToWorld(screen));
+        let fx = d.box.width > 1e-9 ? (local.x - d.box.x) / d.box.width : 0.5;
+        let fy = d.box.height > 1e-9 ? (local.y - d.box.y) / d.box.height : 0.5;
+        if (e.shiftKey) {
+          fx = Math.round(fx * 2) / 2;
+          fy = Math.round(fy * 2) / 2;
+        }
+        fx = Math.round(fx * 100) / 100;
+        fy = Math.round(fy * 100) / 100;
+        this.editor.store.update((doc) =>
+          updateLayer(doc, d.id, (l) => {
+            const b = (l.bindings ?? []).find((x) => x.id === d.bindingId);
+            if (!b) return l;
+            const axes = anchorAxes(b.target) ?? 'xy';
+            const prev = b.anchor ?? { x: 0.5, y: 0.5 };
+            return setBinding(l, { ...b, anchor: { x: axes.includes('x') ? fx : prev.x, y: axes.includes('y') ? fy : prev.y } });
+          }),
+        );
+        break;
+      }
       case 'rotate': {
         const p = this.screenToWorld(screen);
         const angle = Math.atan2(p.y - d.pivotWorld.y, p.x - d.pivotWorld.x);
@@ -652,6 +719,9 @@ export class CanvasView {
         // A tap shorter than the hold: deliberately does nothing to the selection.
         clearTimeout(d.timer);
         this.renderOverlay();
+        break;
+      case 'anchor':
+        this.editor.store.endTransaction();
         break;
       case 'move':
       case 'scale':

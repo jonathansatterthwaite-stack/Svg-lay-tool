@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { bindableTargets, createBinding, type BindingError, createVariable, documentEnv, documentHasBindings, documentUsesTime, resolveDocument, timeEnv } from '../bindings';
-import { createDocument, createGroupLayer, createShapeLayer, insertLayer, normalizeDocument, setBinding, upsertVariable } from '../document';
+import { anchorAxes, anchorLocalPoint, applyBoundValue, bindableTargets, createBinding, type BindingError, createVariable, documentEnv, documentHasBindings, documentUsesTime, resolveDocument, timeEnv } from '../bindings';
+import { createDocument, createGroupLayer, createShapeLayer, insertLayer, layerWorldMatrix, normalizeDocument, setBinding, upsertVariable } from '../document';
+import { applyToPoint } from '../matrix';
 import { evaluate, ExprError, referencedNames } from '../expr';
 import { createModifier } from '../modifiers';
 import { renderDocumentToString } from '../render';
@@ -103,6 +104,41 @@ describe('bindings', () => {
     const keys = bindableTargets(hand).map((t) => t.key);
     expect(keys).toEqual(expect.arrayContaining(['x', 'y', 'rotation', 'opacity', 'visible', 'width', 'height', 'params.sides']));
     expect(keys).not.toContain('scale');
+  });
+
+  it('rotation binding pivots about its anchor', () => {
+    const bar = createShapeLayer({ x: 100, y: 100, width: 10, height: 100 }); // bottom centre at (100,150)
+    const turned = applyBoundValue(bar, 'rotation', 90, { x: 0.5, y: 1 });
+    expect(turned.rotation).toBe(90);
+    const doc = insertLayer(createDocument(), turned);
+    const bottom = applyToPoint(layerWorldMatrix(doc, turned.id), anchorLocalPoint(turned, { x: 0.5, y: 1 }));
+    expect(bottom.x).toBeCloseTo(100, 6);
+    expect(bottom.y).toBeCloseTo(150, 6); // the base stayed on the clock centre
+    // default anchor is the centre: origin does not move
+    expect(applyBoundValue(bar, 'rotation', 45).x).toBe(100);
+  });
+
+  it('height binding grows away from its anchor edge; scale about an anchor corner', () => {
+    const water = createShapeLayer({ x: 0, y: 0, width: 60, height: 60 }); // bottom edge at y = 30
+    const half = applyBoundValue(water, 'height', 30, { x: 0.5, y: 1 });
+    expect(half.type === 'shape' && half.height).toBe(30);
+    expect(half.y).toBeCloseTo(15, 6); // bottom still at 30
+    expect(applyBoundValue(water, 'height', 30).y).toBe(0); // centred by default
+    const g = createGroupLayer({ x: 0, y: 0, children: [createShapeLayer({ x: 50, y: 50, width: 100, height: 100 })] }); // box 0..100
+    const big = applyBoundValue(g, 'scale', 2, { x: 0, y: 0 });
+    expect(big.type === 'group' && big.scale).toBe(2);
+    expect([big.x, big.y]).toEqual([0, 0]); // top-left corner stays
+    const bigCentre = applyBoundValue(g, 'scale', 2, { x: 0.5, y: 0.5 });
+    expect(bigCentre.x).toBeCloseTo(-50, 6);
+    expect(anchorAxes('rotation')).toBe('xy');
+    expect(anchorAxes('height')).toBe('y');
+    expect(anchorAxes('opacity')).toBeNull();
+  });
+
+  it('anchors survive a save/load round trip', () => {
+    const doc = insertLayer(createDocument(), setBinding(createShapeLayer(), createBinding('rotation', 'time', { x: 0.5, y: 1 })));
+    const back = normalizeDocument(JSON.parse(JSON.stringify(doc)));
+    expect(back.layers[0].bindings![0].anchor).toEqual({ x: 0.5, y: 1 });
   });
 
   it('survives a save/load round trip', () => {
