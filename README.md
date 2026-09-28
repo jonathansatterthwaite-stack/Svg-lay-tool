@@ -443,7 +443,8 @@ the Canvas tab, saved with the document as `doc.grid`, and never exported. The s
 | rotate                        | handle on the ring around the shape (Shift snaps to 15°); the ring stays put and the box is hidden while turning, then both are re-fitted on release |
 | group / ungroup               | Ctrl+G / Ctrl+Shift+G                                  |
 | duplicate / delete            | Ctrl+D / Delete                                        |
-| reorder                       | `[` `]` (with Ctrl: to back / front); drag rows in the layer list |
+| reorder                       | `[` `]` (with Ctrl: to back / front); the Layers panel toolbar; or drag a row by its grip (mouse or touch) |
+| group / ungroup / duplicate / delete | Layers panel toolbar and the × on each row (plus the shortcuts below) |
 | undo / redo                   | Ctrl+Z / Ctrl+Y                                        |
 | pan / zoom                    | drag (hold mode) or scroll or Space+drag / Ctrl+scroll or pinch, Ctrl+0 to fit |
 

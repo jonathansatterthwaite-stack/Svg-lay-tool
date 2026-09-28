@@ -34,6 +34,7 @@ export const icons = {
   modifiers: wrap('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
   variables: wrap('<path d="M4 20c3 0 4-3 5-8s2-8 5-8"/><path d="M6 12h6M14 13l6 6M20 13l-6 6"/>'),
   grid: wrap('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>'),
+  grip: wrap('<circle cx="9" cy="6" r="1.5" fill="currentColor"/><circle cx="15" cy="6" r="1.5" fill="currentColor"/><circle cx="9" cy="12" r="1.5" fill="currentColor"/><circle cx="15" cy="12" r="1.5" fill="currentColor"/><circle cx="9" cy="18" r="1.5" fill="currentColor"/><circle cx="15" cy="18" r="1.5" fill="currentColor"/>'),
   up: wrap('<path d="m18 15-6-6-6 6"/>'),
   down: wrap('<path d="m6 9 6 6 6-6"/>'),
 };

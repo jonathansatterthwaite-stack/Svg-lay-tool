@@ -109,9 +109,11 @@ export const EDITOR_STYLES = `
 .slt-root[data-layout="mobile"][data-no-toolbar] { grid-template-rows: minmax(0, 1fr) minmax(0, 42%) auto !important; grid-template-areas: "canvas" "sheet" "tabs" !important; }
 .slt-root[data-layout="mobile"][data-sheet-closed] { grid-template-rows: auto minmax(0, 1fr) 0 auto !important; }
 .slt-root[data-layout="mobile"][data-sheet-closed][data-no-toolbar] { grid-template-rows: minmax(0, 1fr) 0 auto !important; }
-.slt-root[data-layout="mobile"] .slt-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.slt-root[data-layout="mobile"] .slt-toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x; min-width: 0; }
 .slt-root[data-layout="mobile"] .slt-toolbar::-webkit-scrollbar { display: none; }
-.slt-root[data-layout="mobile"] .slt-toolbar .slt-btn { flex: none; }
+.slt-root[data-layout="mobile"] .slt-toolbar > * { flex: none; }
+.slt-root[data-layout="mobile"] .slt-toolbar .slt-spacer { flex: 0 0 8px; }
+.slt-root[data-layout="mobile"] .slt-menu-list { right: auto; left: 0; }
 .slt-root[data-layout="mobile"] .slt-canvas-hint { display: none; }
 .slt-sheet { grid-area: sheet; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--_slt-panel); border-top: 1px solid var(--_slt-border); }
 .slt-sheet > * { flex: 1 1 auto; min-height: 0; height: 100%; border: 0 !important; }
@@ -224,6 +226,17 @@ export const EDITOR_STYLES = `
 .slt-grid-lines { stroke: var(--_slt-text); vector-effect: non-scaling-stroke; pointer-events: none; }
 .slt-stage.slt-preview .slt-doc-frame { stroke: var(--_slt-accent); }
 .slt-stage.slt-preview [data-layer-id] { cursor: default; }
+.slt-layers-tools { display: flex; align-items: center; gap: 2px; padding: 0 6px 4px; border-bottom: 1px solid var(--_slt-border); }
+.slt-layers-tools .slt-sep { width: 1px; height: 16px; background: var(--_slt-border); margin: 0 4px; }
+.slt-grip { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 26px; color: var(--_slt-muted); opacity: 0.5; cursor: grab; flex: none; touch-action: none; }
+.slt-grip svg { width: 12px; height: 12px; }
+.slt-layer-row:hover .slt-grip { opacity: 1; }
+.slt-layers-list.slt-dragging { cursor: grabbing; }
+.slt-layers-list.slt-dragging .slt-layer-row { cursor: grabbing; }
+.slt-layers-list { position: relative; }
+.slt-drag-ghost { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; padding: 3px 8px; background: var(--_slt-panel-2); border: 1px solid var(--_slt-accent); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); font-size: 12px; white-space: nowrap; }
+.slt-layer-row .slt-row-delete { opacity: 0.35; }
+.slt-layer-row .slt-row-delete:hover { color: var(--_slt-danger); opacity: 1; }
 .slt-layers-list { flex: 1; overflow: auto; padding: 2px 4px 8px; }
 .slt-layer-row { display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 0; border-radius: 4px; cursor: pointer; position: relative; }
 .slt-layer-row:hover { background: var(--_slt-hover); }
@@ -246,6 +259,8 @@ export const EDITOR_STYLES = `
 
 @media (pointer: coarse) {
   .slt-layer-row { height: 34px; }
+  .slt-grip { width: 24px; height: 34px; opacity: 0.8; }
+  .slt-grip svg { width: 14px; height: 14px; }
   .slt-layer-row .slt-row-btn { width: 30px; height: 30px; }
   .slt-input, .slt-select { height: 30px; }
   .slt-btn { height: 34px; min-width: 34px; }
