@@ -199,9 +199,16 @@ export class CanvasView {
   /** Update the hint text for the current interaction mode. */
   updateHint(): void {
     const hold = this.editor.features.canvasInteraction === 'hold';
-    this.hint.textContent = hold
-      ? 'Drag to pan · Ctrl+scroll or pinch to zoom · hold a layer to pick it up'
-      : 'Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan';
+    const mod = this.editor.modKey();
+    if (this.editor.inputMode() === 'touch') {
+      this.hint.textContent = hold
+        ? 'Drag to pan · pinch to zoom · hold a layer to pick it up'
+        : 'Drag the selected layer to move it · drag elsewhere to pan · pinch to zoom';
+    } else {
+      this.hint.textContent = hold
+        ? `Drag to pan · ${mod}+scroll to zoom · hold a layer to pick it up`
+        : `Scroll to pan · ${mod}+scroll to zoom · Space+drag to pan`;
+    }
   }
 
   setZoom(zoom: number, aroundScreen?: Point): void {

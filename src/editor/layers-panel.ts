@@ -21,6 +21,12 @@ export class LayersPanel {
   readonly el: HTMLDivElement;
   private list: HTMLDivElement;
   private tools = new Map<string, HTMLButtonElement>();
+  private tips = new Map<string, [label: string, keys: string]>();
+
+  /** Re-write tooltips for the current input mode (shortcuts only when a keyboard is expected). */
+  updateTips(): void {
+    for (const [key, [label, keys]] of this.tips) this.tools.get(key)?.setAttribute('title', this.editor.tip(label, keys));
+  }
   private collapsed = new Set<string>();
   private renaming: string | null = null;
   private drag: { id: string; pointerId: number; ghost: HTMLElement; target: { id: string; zone: DropZone } | null } | null = null;
@@ -28,20 +34,21 @@ export class LayersPanel {
   constructor(private editor: SvgLayEditor) {
     this.list = el('div', { class: 'slt-layers-list' });
     const ed = editor;
-    const tool = (key: string, ic: IconName, title: string, fn: () => void) => {
-      const b = button(icon(ic), fn, { title, cls: 'slt-small slt-icon-only' });
+    const tool = (key: string, ic: IconName, label: string, keys: string, fn: () => void) => {
+      const b = button(icon(ic), fn, { title: ed.tip(label, keys), cls: 'slt-small slt-icon-only' });
       this.tools.set(key, b);
+      this.tips.set(key, [label, keys]);
       return b;
     };
     const toolbar = el('div', { class: 'slt-layers-tools' }, [
-      tool('group', 'group', 'Group (Ctrl+G)', () => ed.groupSelection()),
-      tool('ungroup', 'ungroup', 'Ungroup (Ctrl+Shift+G)', () => ed.ungroupSelection()),
-      tool('duplicate', 'duplicate', 'Duplicate (Ctrl+D)', () => ed.duplicateSelection()),
+      tool('group', 'group', 'Group', 'Mod+G', () => ed.groupSelection()),
+      tool('ungroup', 'ungroup', 'Ungroup', 'Mod+Shift+G', () => ed.ungroupSelection()),
+      tool('duplicate', 'duplicate', 'Duplicate', 'Mod+D', () => ed.duplicateSelection()),
       el('span', { class: 'slt-sep' }),
-      tool('front', 'front', 'Bring to front (Ctrl+])', () => ed.reorderSelection('front')),
-      tool('forward', 'forward', 'Bring forward (])', () => ed.reorderSelection('forward')),
-      tool('backward', 'backward', 'Send backward ([)', () => ed.reorderSelection('backward')),
-      tool('back', 'back', 'Send to back (Ctrl+[)', () => ed.reorderSelection('back')),
+      tool('front', 'front', 'Bring to front', 'Mod+]', () => ed.reorderSelection('front')),
+      tool('forward', 'forward', 'Bring forward', ']', () => ed.reorderSelection('forward')),
+      tool('backward', 'backward', 'Send backward', '[', () => ed.reorderSelection('backward')),
+      tool('back', 'back', 'Send to back', 'Mod+[', () => ed.reorderSelection('back')),
     ]);
     this.el = el('div', { class: 'slt-layers' }, [el('div', { class: 'slt-panel-title' }, ['Layers']), toolbar, this.list]);
   }

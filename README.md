@@ -188,9 +188,12 @@ strength or a deform can be animated too. Bindings are evaluated when
 rendering; the stored document keeps the unbound values.
 
 Formulas use a small safe language: `+ - * / % ^`, comparisons and `&& || !`
-(booleans are 1/0), `cond ? a : b`, and functions `abs floor ceil round trunc
-sqrt pow min max clamp lerp mod sin cos tan asin acos atan atan2 sign step
-smoothstep wrap`, constants `pi`, `e`. Time built-ins are always available:
+(booleans are 1/0), `cond ? a : b`, and functions `abs sign floor ceil round
+trunc fract min max clamp mod wrap pingpong lerp map step smoothstep ease sqrt
+cbrt pow exp log log2 log10 hypot sin cos tan asin acos atan atan2 deg rad`,
+constants `pi`, `tau`, `e`. The **Functions** list at the top of the panel's
+reference section documents each one with its signature (`EXPR_REFERENCE` in
+code). Time built-ins are always available:
 `hours`, `hours12`, `minutes`, `seconds`, `time` (fractional seconds since
 midnight), `dayFraction`, `weekday`, `date`, `month`, `year`, `t` (seconds
 since the document opened) and `now`. When a binding references one of them
@@ -225,7 +228,22 @@ editor.setVariables({ battery: 41 }); // later: updates the value everywhere
 ```
 
 `variableGroups` in the options does the same at construction;
-`unregisterVariables(id)` removes a group. Documents that use app variables
+`unregisterVariables(id)` removes a group.
+
+An app can also add its own **"+ add variable" buttons** beside the default
+one, each creating a ready-made variable (a slider or a formula):
+
+```ts
+editor.registerVariablePresets([
+  { id: 'percent', label: 'Percent', variable: { name: 'percent', value: 50, min: 0, max: 100, step: 1 } },
+  { id: 'battery', label: 'Battery fraction', variable: { name: 'batteryFraction', expression: 'battery / 100' } },
+  { id: 'count', label: 'Count', variable: (doc) => ({ name: 'count', value: doc.variables?.length ?? 0, max: 10, step: 1 }) },
+]);
+```
+
+`variablePresets` in the options does the same at construction,
+`unregisterVariablePresets(ids?)` removes them, and `editor.addVariable(init)`
+inserts a variable programmatically (names are made unique). Documents that use app variables
 render headlessly with `renderDocument(doc, { variables: { battery: 41 } })`. Examples: a jar filling with
 water (a rectangle's height bound to `level`, clipped by a mask), a clock (hand
 groups' rotation bound to time), or a pile of apples (each apple's `visible`
@@ -422,7 +440,7 @@ Methods (all changes are undoable):
   `updateSelected(patch)`, `updateLayer(id, patch)`, `nudgeSelection(dx, dy)`, `undo()`, `redo()`
 - View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`
 - Theme & features: `setTheme(name)`, `setColors(tokens)`, `clearColors()`, `setFeatures(partial)`, `features`
-- Variables: `setVariables(values)`, `clearVariables()`, `registerVariables(group)`, `unregisterVariables(id)`, `env()`, `resolvedDocument()`
+- Variables: `setVariables(values)`, `clearVariables()`, `registerVariables(group)`, `unregisterVariables(id)`, `registerVariablePresets(presets)`, `unregisterVariablePresets(ids?)`, `addVariable(init)`, `env()`, `resolvedDocument()`
 - Export: `exportSvg()`, `exportPng({ scale | width, background })`, `downloadSvg()`, `downloadPng()`,
   `downloadJson()`, `openJsonFile()`
 - Events: `on('change' | 'selectionchange' | 'viewchange', fn)` returns an unsubscribe function
@@ -449,6 +467,11 @@ pointer.
   what is about to resize or rotate.
 - **Direct mode** (`'direct'`): dragging the selected layer moves it straight
   away; dragging anywhere else pans.
+
+The canvas hint, tooltips and the Shortcuts section of the Canvas tab are
+written for the device in use: gestures on touch (mobile layout or a coarse
+pointer), keyboard shortcuts otherwise, with ⌘ on Apple devices. Force one
+with `features.input: 'touch' | 'mouse'` (`'auto'` by default).
 
 On desktop the side column keeps the Layers panel on top and organises the
 tools into tabs beneath it: Canvas, Layer, Modifiers and Variables (the same

@@ -112,13 +112,25 @@ export class PropertiesPanel {
         el('div', { class: 'slt-hint' }, ['The grid is an editing aid and never appears in exports. Turn on Snap in the toolbar to align moves and resizes to it.']),
       ]),
     );
-    this.el.appendChild(
-      section('Shortcuts', [
-        el('div', { class: 'slt-hint' }, ['Hold a layer to pick it up · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°)']),
-        el('div', { class: 'slt-hint' }, [`${f.groups ? 'Ctrl+G group · Ctrl+Shift+G ungroup · ' : ''}Ctrl+D duplicate · [ ] reorder · Del delete · Ctrl+Z / Ctrl+Y undo/redo`]),
-        el('div', { class: 'slt-hint' }, ['Select layers in the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.']),
-      ]),
-    );
+    this.el.appendChild(this.shortcutsSection());
+  }
+
+  /** Tips for the current device: touch gestures, or keyboard shortcuts with the platform's modifier. */
+  private shortcutsSection(): HTMLElement {
+    const f = this.editor.features;
+    const pick = f.canvasInteraction === 'hold' ? 'Hold a layer to pick it up' : 'Drag the selected layer to move it';
+    if (this.editor.inputMode() === 'touch') {
+      return section('Tips', [
+        el('div', { class: 'slt-hint' }, [`${pick} · drag a handle to resize along the canvas axes · drag the ring to rotate · pinch to zoom, drag elsewhere to pan`]),
+        el('div', { class: 'slt-hint' }, [`Select layers in the strip or the Layers tab; the corner button on a group thumbnail opens it. ${f.groups ? 'Group, ungroup, ' : ''}duplicate, reorder and delete from the Layers tab toolbar; undo and redo from the top bar.`]),
+      ]);
+    }
+    const m = this.editor.modKey();
+    return section('Shortcuts', [
+      el('div', { class: 'slt-hint' }, [`${pick} · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°) · ${m}+scroll zooms`]),
+      el('div', { class: 'slt-hint' }, [`${f.groups ? `${m}+G group · ${m}+Shift+G ungroup · ` : ''}${m}+D duplicate · [ ] reorder · Del delete · ${m}+Z / ${m}+Y undo/redo`]),
+      el('div', { class: 'slt-hint' }, ['Select layers in the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.']),
+    ]);
   }
 
   private applyDoc(fn: (d: typeof this.editor.document) => typeof this.editor.document, commit: boolean): void {
@@ -138,7 +150,7 @@ export class PropertiesPanel {
     this.el.appendChild(
       section(`${layers.length} layers selected`, [
         el('div', { class: 'slt-btn-row' }, [
-          this.editor.features.groups ? button([icon('group'), 'Group'], () => this.editor.groupSelection(), { title: 'Group (Ctrl+G)' }) : null,
+          this.editor.features.groups ? button([icon('group'), 'Group'], () => this.editor.groupSelection(), { title: this.editor.tip('Group', 'Mod+G') }) : null,
           button([icon('duplicate'), 'Duplicate'], () => this.editor.duplicateSelection()),
           button([icon('trash'), 'Delete'], () => this.editor.deleteSelection(), { cls: 'slt-danger' }),
         ]),

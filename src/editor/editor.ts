@@ -31,7 +31,10 @@ import {
   documentUsesTime,
   documentEnv,
   resolveDocument,
+  createVariable,
+  upsertVariable,
   type Env,
+  type Variable,
   type Layer,
   type PngExportOptions,
   type RenderOptions,
@@ -69,6 +72,8 @@ export interface EditorOptions {
   features?: Partial<EditorFeatures>;
   /** Variables the host app exposes to formulas, grouped for the Variables panel. */
   variableGroups?: VariableGroup[];
+  /** App-specific "+ add variable" buttons for the Variables panel. */
+  variablePresets?: VariablePreset[];
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
   /**
@@ -123,6 +128,20 @@ export interface EditorEvents extends Record<string, unknown[]> {
   previewchange: [on: boolean];
   snapchange: [on: boolean];
   panelresize: [widths: PanelWidths];
+}
+
+/**
+ * An app-specific "+ add" button for the Variables panel. Clicking it inserts
+ * a variable built from `variable` (name made unique if taken).
+ */
+export interface VariablePreset {
+  id: string;
+  /** Button text, e.g. "Battery %". */
+  label: string;
+  /** Tooltip. */
+  title?: string;
+  /** The variable to create; a function receives the document and can compute it. */
+  variable: Partial<Variable> | ((doc: SvgDocument) => Partial<Variable>);
 }
 
 /** Widths (px) of the desktop panels: the shape library and the side panel. */
@@ -184,6 +203,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   variableOverrides: Env = {};
   /** Host-registered variable groups (see registerVariables). */
   variableGroups: VariableGroup[] = [];
+  /** Host-registered "+ add variable" buttons (see registerVariablePresets). */
+  variablePresets: VariablePreset[] = [];
+  private coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private disposers: (() => void)[] = [];
   private destroyed = false;
 
@@ -197,6 +219,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.store = new DocumentStore(doc);
     this.features = resolveFeatures({ ...(options.features ?? {}), ...(options.shapes ? { shapes: options.shapes } : {}) });
     this.variableGroups = (options.variableGroups ?? []).map(cloneGroup);
+    this.variablePresets = (options.variablePresets ?? []).map((p) => ({ ...p }));
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -269,6 +292,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (mode === this.currentLayout) return;
     this.currentLayout = mode;
     this.rootEl.dataset.layout = mode;
+    this.updateTips();
     // Detach everything, then rebuild.
     for (const child of [...this.rootEl.children]) child.remove();
     this.sideEl = null;
@@ -762,7 +786,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   setFeatures(partial: Partial<EditorFeatures>): void {
     this.features = resolveFeatures({ ...this.features, ...partial });
     this.library?.refresh();
-    this.canvas.updateHint();
+    this.updateTips();
     this.refresh(false);
   }
 
@@ -879,6 +903,65 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.variableGroups = this.variableGroups.filter((g) => g.id !== groupId);
     this.canvas.render();
     this.refreshVariablesPanel();
+  }
+
+  /** Add (or replace, by id) app-specific "+ add variable" buttons in the Variables panel. */
+  registerVariablePresets(presets: VariablePreset[]): void {
+    for (const p of presets) {
+      const i = this.variablePresets.findIndex((x) => x.id === p.id);
+      if (i < 0) this.variablePresets.push({ ...p });
+      else this.variablePresets[i] = { ...p };
+    }
+    this.refreshVariablesPanel();
+  }
+
+  /** Remove presets by id, or all of them when no ids are given. */
+  unregisterVariablePresets(ids?: string[]): void {
+    this.variablePresets = ids ? this.variablePresets.filter((p) => !ids.includes(p.id)) : [];
+    this.refreshVariablesPanel();
+  }
+
+  /** Insert a variable from a preset (or a partial), making its name unique; returns the variable. */
+  addVariable(init: Partial<Variable> | VariablePreset = {}): Variable {
+    const doc = this.store.doc;
+    const isPreset = (x: Partial<Variable> | VariablePreset): x is VariablePreset => 'variable' in x && 'label' in x;
+    const partial = isPreset(init) ? (typeof init.variable === 'function' ? init.variable(doc) : init.variable) : init;
+    const names = new Set((doc.variables ?? []).map((v) => v.name));
+    const base = (partial.name ?? 'value').replace(/[^A-Za-z0-9_]/g, '_').replace(/^(?=\d)/, '_') || 'value';
+    let name = base;
+    for (let i = 1; names.has(name); i++) name = `${base}${i}`;
+    const { id: _ignored, ...rest } = partial;
+    const v = createVariable({ ...rest, name });
+    if (v.min > v.max) [v.min, v.max] = [v.max, v.min];
+    if (v.expression === undefined) v.value = Math.min(v.max, Math.max(v.min, v.value));
+    this.store.update((d) => upsertVariable(d, v));
+    this.store.endTransaction();
+    return v;
+  }
+
+  /** Re-write the canvas hint and tooltips for the current input mode. */
+  private updateTips(): void {
+    this.canvas.updateHint();
+    this.toolbar?.updateTips();
+    this.layersPanel?.updateTips();
+  }
+
+  /** Whether hints are written for touch or for keyboard and mouse (see `features.input`). */
+  inputMode(): 'touch' | 'mouse' {
+    const f = this.features.input;
+    if (f !== 'auto') return f;
+    return this.layout === 'mobile' || this.coarsePointer ? 'touch' : 'mouse';
+  }
+
+  /** The platform's command modifier as shown in tips: ⌘ on Apple devices, Ctrl elsewhere. */
+  modKey(): string {
+    return typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? '') ? '⌘' : 'Ctrl';
+  }
+
+  /** Append the shortcut to a tooltip when a keyboard is expected: `tip('Undo', 'Z')` → "Undo (Ctrl+Z)". */
+  tip(label: string, keys?: string): string {
+    if (!keys || this.inputMode() === 'touch') return label;
+    return `${label} (${keys.replace(/Mod/g, this.modKey())})`;
   }
 
   /** Values of all registered app variables, by name (overrides applied on top by env()). */

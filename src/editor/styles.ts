@@ -316,7 +316,7 @@ input.slt-gray-range { background: linear-gradient(90deg, #000, #fff); border-ra
 .slt-ref-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--_slt-panel-2); color: var(--_slt-muted); font-size: 10px; }
 .slt-time-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
 .slt-time-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--_slt-muted); }
-.slt-time-row code { color: var(--_slt-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 78px; }
+.slt-time-row code { color: var(--_slt-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 78px; flex: none; white-space: nowrap; }
 .slt-time-row .slt-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slt-time-value { font-variant-numeric: tabular-nums; color: var(--_slt-text); }
 .slt-anchor-row { align-items: flex-start; }

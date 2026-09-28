@@ -7,7 +7,7 @@
  * (< <= > >= == !=), && ||, `cond ? a : b`, parentheses, and functions:
  * abs, floor, ceil, round, trunc, sqrt, pow, min, max, clamp, lerp, mod,
  * sin, cos, tan, asin, acos, atan, atan2, sign, step, smoothstep, wrap.
- * Booleans are 1 and 0. Constants: pi, e, true, false.
+ * Booleans are 1 and 0. Constants: pi, tau, e, true, false.
  */
 
 export type Expr =
@@ -159,7 +159,7 @@ export function parseExpr(src: string): Expr {
   return expr;
 }
 
-const CONSTANTS: Env = { pi: Math.PI, e: Math.E, true: 1, false: 0 };
+const CONSTANTS: Env = { pi: Math.PI, tau: Math.PI * 2, e: Math.E, true: 1, false: 0 };
 
 const FUNCTIONS: Record<string, (...a: number[]) => number> = {
   abs: Math.abs,
@@ -189,7 +189,84 @@ const FUNCTIONS: Record<string, (...a: number[]) => number> = {
   },
   /** wrap(v, lo, hi): v wrapped into [lo, hi) */
   wrap: (v, lo, hi) => lo + ((((v - lo) % (hi - lo)) + (hi - lo)) % (hi - lo)),
+  exp: Math.exp,
+  log: Math.log,
+  log2: Math.log2,
+  log10: Math.log10,
+  cbrt: Math.cbrt,
+  hypot: Math.hypot,
+  fract: (v) => v - Math.floor(v),
+  deg: (rad) => (rad * 180) / Math.PI,
+  rad: (deg) => (deg * Math.PI) / 180,
+  /** map(v, a, b, c, d): v measured on [a, b] mapped onto [c, d] (not clamped) */
+  map: (v, a, b, c, d) => (b === a ? c : c + ((v - a) / (b - a)) * (d - c)),
+  /** pingpong(v, len): bounces between 0 and len as v grows */
+  pingpong: (v, len) => {
+    if (len <= 0) return 0;
+    const t = ((v % (len * 2)) + len * 2) % (len * 2);
+    return t <= len ? t : len * 2 - t;
+  },
+  /** ease(t): smooth ease-in-out of t in [0, 1] */
+  ease: (t) => {
+    const c = Math.min(Math.max(t, 0), 1);
+    return c * c * (3 - 2 * c);
+  },
 };
+
+/** One entry of the formula reference shown in the editor. */
+export interface ExprReference {
+  /** Signature as typed in a formula, e.g. `clamp(v, lo, hi)`. */
+  signature: string;
+  label: string;
+  /** Name usable for lookups; blank for operator rows. */
+  name: string;
+}
+
+/** Documentation for every function, constant and operator of the language (for the Variables panel). */
+export const EXPR_REFERENCE: ExprReference[] = [
+  { name: 'abs', signature: 'abs(v)', label: 'Absolute value' },
+  { name: 'sign', signature: 'sign(v)', label: '-1, 0 or 1' },
+  { name: 'floor', signature: 'floor(v)', label: 'Round down' },
+  { name: 'ceil', signature: 'ceil(v)', label: 'Round up' },
+  { name: 'round', signature: 'round(v)', label: 'Round to nearest' },
+  { name: 'trunc', signature: 'trunc(v)', label: 'Drop the fraction' },
+  { name: 'fract', signature: 'fract(v)', label: 'Fraction part (0 to 1)' },
+  { name: 'min', signature: 'min(a, b, …)', label: 'Smallest value' },
+  { name: 'max', signature: 'max(a, b, …)', label: 'Largest value' },
+  { name: 'clamp', signature: 'clamp(v, lo, hi)', label: 'Limit v to [lo, hi]' },
+  { name: 'mod', signature: 'mod(a, b)', label: 'Remainder, always positive for b > 0' },
+  { name: 'wrap', signature: 'wrap(v, lo, hi)', label: 'Wrap v into [lo, hi)' },
+  { name: 'pingpong', signature: 'pingpong(v, len)', label: 'Bounce between 0 and len' },
+  { name: 'lerp', signature: 'lerp(a, b, t)', label: 'Blend a→b by t (0..1)' },
+  { name: 'map', signature: 'map(v, a, b, c, d)', label: 'Rescale v from [a, b] to [c, d]' },
+  { name: 'step', signature: 'step(edge, v)', label: '1 when v ≥ edge, else 0' },
+  { name: 'smoothstep', signature: 'smoothstep(a, b, v)', label: 'Smooth 0→1 as v goes a→b' },
+  { name: 'ease', signature: 'ease(t)', label: 'Ease in-out of t (0..1)' },
+  { name: 'sqrt', signature: 'sqrt(v)', label: 'Square root' },
+  { name: 'cbrt', signature: 'cbrt(v)', label: 'Cube root' },
+  { name: 'pow', signature: 'pow(a, b)', label: 'a to the power b (also a ^ b)' },
+  { name: 'exp', signature: 'exp(v)', label: 'e to the power v' },
+  { name: 'log', signature: 'log(v)', label: 'Natural logarithm' },
+  { name: 'log2', signature: 'log2(v)', label: 'Base-2 logarithm' },
+  { name: 'log10', signature: 'log10(v)', label: 'Base-10 logarithm' },
+  { name: 'hypot', signature: 'hypot(x, y)', label: 'Length of (x, y)' },
+  { name: 'sin', signature: 'sin(rad)', label: 'Sine (radians)' },
+  { name: 'cos', signature: 'cos(rad)', label: 'Cosine (radians)' },
+  { name: 'tan', signature: 'tan(rad)', label: 'Tangent (radians)' },
+  { name: 'asin', signature: 'asin(v)', label: 'Inverse sine' },
+  { name: 'acos', signature: 'acos(v)', label: 'Inverse cosine' },
+  { name: 'atan', signature: 'atan(v)', label: 'Inverse tangent' },
+  { name: 'atan2', signature: 'atan2(y, x)', label: 'Angle of (x, y) in radians' },
+  { name: 'deg', signature: 'deg(rad)', label: 'Radians → degrees' },
+  { name: 'rad', signature: 'rad(deg)', label: 'Degrees → radians' },
+  { name: 'pi', signature: 'pi', label: '3.14159…' },
+  { name: 'tau', signature: 'tau', label: '2π = 6.28318…' },
+  { name: 'e', signature: 'e', label: '2.71828…' },
+  { name: '', signature: '+ - * / % ^', label: 'Arithmetic, remainder, power' },
+  { name: '', signature: '< <= > >= == !=', label: 'Comparisons give 1 or 0' },
+  { name: '', signature: '&& || !', label: 'And, or, not (0 is false)' },
+  { name: '', signature: 'cond ? a : b', label: 'a when cond is non-zero, else b' },
+];
 
 export function evaluateExpr(expr: Expr, env: Env): number {
   switch (expr.kind) {

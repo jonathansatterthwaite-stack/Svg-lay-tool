@@ -26,6 +26,12 @@ editor.registerVariables({
     { name: 'unread', label: 'Unread notifications', value: 3 },
   ],
 });
+// App-specific "+ add" buttons in the Variables tab: ready-made variables for the app's use cases.
+editor.registerVariablePresets([
+  { id: 'percent', label: 'Percent', title: 'A 0–100 slider', variable: { name: 'percent', value: 50, min: 0, max: 100, step: 1 } },
+  { id: 'batteryFraction', label: 'Battery fraction', title: 'battery / 100, computed from the device battery', variable: { name: 'batteryFraction', expression: 'battery / 100' } },
+  { id: 'count', label: 'Count', variable: (doc) => ({ name: 'count', value: (doc.variables?.length ?? 0) + 1, min: 0, max: 10, step: 1 }) },
+]);
 // Simulate live data: the battery drains slowly while the page is open.
 let battery = 72;
 setInterval(() => {
@@ -53,6 +59,8 @@ const deviceSel = document.getElementById('device') as HTMLSelectElement;
 const applyDevice = () => {
   if (deviceSel.value === 'desktop') delete stage.dataset.device;
   else stage.dataset.device = deviceSel.value;
+  // Hints and tooltips follow the simulated device (a real phone is detected automatically).
+  editor.setFeatures({ input: deviceSel.value === 'desktop' ? 'auto' : 'touch' });
   localStorage.setItem('slt-device', deviceSel.value);
   requestAnimationFrame(() => editor.fitToView());
 };

@@ -56,6 +56,12 @@ export interface EditorFeatures {
   groupStretch: boolean;
   /** Show the Variables panel / tab (document variables and property bindings). */
   variables: boolean;
+  /**
+   * Which device the hints and shortcut tips are written for. `auto`
+   * (default) says touch when the layout is mobile or the pointer is coarse,
+   * otherwise keyboard and mouse (with ⌘ on Apple devices).
+   */
+  input: 'auto' | 'touch' | 'mouse';
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -78,6 +84,7 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   highlightSelection: true,
   groupStretch: true,
   variables: true,
+  input: 'auto',
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

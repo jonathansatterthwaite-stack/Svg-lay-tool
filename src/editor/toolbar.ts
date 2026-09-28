@@ -6,10 +6,16 @@ import { icon, type IconName } from './icons';
 export class Toolbar {
   readonly el: HTMLDivElement;
   private buttons = new Map<string, HTMLButtonElement>();
+  private tips = new Map<string, [label: string, keys: string]>();
   private zoomLabel: HTMLSpanElement;
   private menu: HTMLDivElement;
   private previewToggle: HTMLInputElement;
   private snapToggle: HTMLInputElement;
+
+  /** Re-write tooltips for the current input mode (shortcuts only when a keyboard is expected). */
+  updateTips(): void {
+    for (const [key, [label, keys]] of this.tips) this.buttons.get(key)?.setAttribute('title', this.editor.tip(label, keys));
+  }
 
   constructor(private editor: SvgLayEditor) {
     const ed = editor;
@@ -17,6 +23,11 @@ export class Toolbar {
       const btn = button(label ? [icon(ic), label] : icon(ic), fn, { title, cls: label ? '' : 'slt-icon-only' });
       this.buttons.set(key, btn);
       return btn;
+    };
+    // Tooltips carry the shortcut only when a keyboard is expected; refreshed by updateTips().
+    const tip = (key: string, label: string, keys: string) => {
+      this.tips.set(key, [label, keys]);
+      return ed.tip(label, keys);
     };
     const sep = () => el('span', { class: 'slt-sep' });
     this.zoomLabel = el('span', { class: 'slt-zoom-label' }, ['100%']);
@@ -41,16 +52,16 @@ export class Toolbar {
       el('label', { class: 'slt-switch', title }, [icon(ic), el('span', {}, [label]), input]);
 
     this.el = el('div', { class: 'slt-toolbar' }, [
-      b('undo', 'undo', 'Undo (Ctrl+Z)', () => ed.undo()),
-      b('redo', 'redo', 'Redo (Ctrl+Y)', () => ed.redo()),
+      b('undo', 'undo', tip('undo', 'Undo', 'Mod+Z'), () => ed.undo()),
+      b('redo', 'redo', tip('redo', 'Redo', 'Mod+Y'), () => ed.redo()),
       sep(),
       switchRow('Snap', 'grid', this.snapToggle, 'Snap moves and resizes to the grid (set the grid in the Canvas tab)'),
       switchRow('Preview', 'eye', this.previewToggle, 'Show the image exactly as it will be produced'),
       el('span', { class: 'slt-spacer' }),
-      b('zoomOut', 'zoomOut', 'Zoom out (Ctrl+-)', () => ed.zoomBy(0.8)),
+      b('zoomOut', 'zoomOut', tip('zoomOut', 'Zoom out', 'Mod+-'), () => ed.zoomBy(0.8)),
       this.zoomLabel,
-      b('zoomIn', 'zoomIn', 'Zoom in (Ctrl+=)', () => ed.zoomBy(1.25)),
-      b('fit', 'fit', 'Fit to view (Ctrl+0)', () => ed.fitToView()),
+      b('zoomIn', 'zoomIn', tip('zoomIn', 'Zoom in', 'Mod+='), () => ed.zoomBy(1.25)),
+      b('fit', 'fit', tip('fit', 'Fit to view', 'Mod+0'), () => ed.fitToView()),
       sep(),
       this.menu,
     ]);

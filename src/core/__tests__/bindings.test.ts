@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { anchorAxes, anchorLocalPoint, applyBoundValue, bindableTargets, createBinding, type BindingError, createVariable, documentEnv, documentHasBindings, documentUsesTime, evaluateVariable, resolveDocument, timeEnv } from '../bindings';
 import { createDocument, createGroupLayer, createShapeLayer, insertLayer, layerWorldMatrix, normalizeDocument, setBinding, upsertVariable } from '../document';
 import { applyToPoint } from '../matrix';
-import { evaluate, ExprError, referencedNames } from '../expr';
+import { evaluate, EXPR_FUNCTION_NAMES, EXPR_REFERENCE, ExprError, referencedNames } from '../expr';
 import { createModifier } from '../modifiers';
 import { renderDocumentToString } from '../render';
 
@@ -31,6 +31,16 @@ describe('expressions', () => {
     expect(evaluate('mod(-1, 12)', env)).toBe(11);
     expect(evaluate('wrap(370, 0, 360)', env)).toBe(10);
     expect(evaluate('hours12 * 30 + minutes / 2', env)).toBe(315);
+    expect(evaluate('map(5, 0, 10, 100, 200)', env)).toBe(150);
+    expect(evaluate('pingpong(7, 5)', env)).toBe(3);
+    expect(evaluate('fract(2.25) + deg(pi) + rad(180) - pi', env)).toBeCloseTo(180.25);
+    expect(evaluate('ease(0.5) + hypot(3, 4) + log10(1000) + tau / pi', env)).toBeCloseTo(0.5 + 5 + 3 + 2);
+  });
+  it('documents every function and constant', () => {
+    const documented = new Set(EXPR_REFERENCE.map((r) => r.name).filter(Boolean));
+    for (const fn of EXPR_FUNCTION_NAMES) expect(documented.has(fn), fn).toBe(true);
+    for (const c of ['pi', 'tau', 'e']) expect(documented.has(c), c).toBe(true);
+    for (const r of EXPR_REFERENCE) if (r.name) expect(() => evaluate(r.signature.replace(/[a-z…, ]+(?=\))/g, (m) => m.replace(/[a-z…]+/g, '1')), env)).not.toThrow();
   });
   it('reports errors instead of throwing generic ones', () => {
     expect(() => evaluate('1 +', env)).toThrow(ExprError);

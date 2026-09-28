@@ -2,10 +2,9 @@ import {
   anchorAxes,
   bindableTargets,
   createBinding,
-  createVariable,
   evaluate,
   evaluateVariable,
-  EXPR_FUNCTION_NAMES,
+  EXPR_REFERENCE,
   removeBinding,
   removeVariable,
   setBinding,
@@ -60,34 +59,38 @@ export class VariablesPanel {
   private variablesSection(): HTMLElement {
     const doc = this.editor.document;
     const vars = doc.variables ?? [];
-    const add = button([icon('plus'), 'Add variable'], () => {
-      const names = new Set(vars.map((v) => v.name));
-      let i = 1;
-      while (names.has(`value${i}`)) i++;
-      this.commitDoc((d) => upsertVariable(d, createVariable({ name: `value${i}` })));
-    }, { cls: 'slt-small' });
+    const add = button([icon('plus'), 'Add variable'], () => this.editor.addVariable({ name: 'value1' }), { cls: 'slt-small' });
     const children: (HTMLElement | null)[] = [];
+    // App-specific "+ add" buttons registered by the host.
+    if (this.editor.variablePresets.length) {
+      children.push(
+        el(
+          'div',
+          { class: 'slt-btn-row slt-var-presets' },
+          this.editor.variablePresets.map((p) => button([icon('plus'), p.label], () => this.editor.addVariable(p), { cls: 'slt-small', title: p.title ?? `Add a "${p.label}" variable` })),
+        ),
+      );
+    }
     if (vars.length === 0) {
       children.push(el('div', { class: 'slt-hint' }, ['Variables are numbers you (or the app using this editor) can change, or formulas over time and other variables. Bind layer properties to formulas that use them.']));
     }
     for (const v of vars) children.push(this.variableCard(v, vars));
 
-    // Reference lists: the time built-ins and any groups the host app registered.
+    // Reference lists: the formula functions, the time built-ins and any groups the host app registered.
     const env = this.editor.env();
-    children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label })), env));
+    const functionCount = EXPR_REFERENCE.filter((r) => r.name).length;
+    children.push(this.referenceList('functions', 'Functions', EXPR_REFERENCE.map((r) => ({ name: r.signature, label: r.label })), functionCount));
+    children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label, value: fmtValue(env[t.name]) }))));
     for (const g of this.editor.variableGroups) {
-      children.push(this.referenceList(g.id, g.title, g.variables.map((v) => ({ name: v.name, label: v.label ?? '' })), env));
-    }
-    if (this.expanded.has('time')) {
-      children.push(el('div', { class: 'slt-hint' }, [`Functions: ${EXPR_FUNCTION_NAMES.join(', ')}. Constants: pi, e. Comparisons give 1 or 0; use cond ? a : b.`]));
+      children.push(this.referenceList(g.id, g.title, g.variables.map((v) => ({ name: v.name, label: v.label ?? '', value: fmtValue(env[v.name]) }))));
     }
     return section('Variables', children, add);
   }
 
-  /** A collapsible read-only list of names, descriptions and current values. */
-  private referenceList(id: string, title: string, items: { name: string; label: string }[], env: Record<string, number>): HTMLElement {
+  /** A collapsible read-only list of names (or signatures), descriptions and optional current values. */
+  private referenceList(id: string, title: string, items: { name: string; label: string; value?: string }[], count = items.length): HTMLElement {
     const open = this.expanded.has(id);
-    const toggle = button([icon(open ? 'chevronDown' : 'chevronRight'), title, el('span', { class: 'slt-ref-count' }, [String(items.length)])], () => {
+    const toggle = button([icon(open ? 'chevronDown' : 'chevronRight'), title, el('span', { class: 'slt-ref-count' }, [String(count)])], () => {
       if (open) this.expanded.delete(id);
       else this.expanded.add(id);
       this.render();
@@ -102,7 +105,7 @@ export class VariablesPanel {
             el('div', { class: 'slt-time-row', title: t.label }, [
               el('code', {}, [t.name]),
               el('span', { class: 'slt-grow' }, [t.label]),
-              el('span', { class: 'slt-time-value' }, [fmtValue(env[t.name])]),
+              t.value === undefined ? null : el('span', { class: 'slt-time-value' }, [t.value]),
             ]),
           ),
         ),
