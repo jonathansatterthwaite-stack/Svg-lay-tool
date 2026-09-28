@@ -198,7 +198,27 @@ the editor redraws the canvas several times a second, so a clock ticks.
 
 A host app drives the picture with `editor.setVariables({ level: 0.4 })` (or
 `renderDocument(doc, { variables: { level: 0.4 }, time })` headlessly);
-overrides win over the document's slider values. Examples: a jar filling with
+overrides win over the document's slider values.
+
+To expose its own data as named variables, an app registers groups; each
+appears as a collapsible list in the Variables panel next to **Time**, with
+labels and live values, and formulas may use the names without errors:
+
+```ts
+editor.registerVariables({
+  id: 'device',
+  title: 'Device',
+  variables: [
+    { name: 'battery', label: 'Battery level 0–100', value: 72 },
+    { name: 'unread', label: 'Unread notifications', value: 3 },
+  ],
+});
+editor.setVariables({ battery: 41 }); // later: updates the value everywhere
+```
+
+`variableGroups` in the options does the same at construction;
+`unregisterVariables(id)` removes a group. Documents that use app variables
+render headlessly with `renderDocument(doc, { variables: { battery: 41 } })`. Examples: a jar filling with
 water (a rectangle's height bound to `level`, clipped by a mask), a clock (hand
 groups' rotation bound to time), or a pile of apples (each apple's `visible`
 bound to `count >= n`). The demo's "Clock & gauge" sample shows the first two.
@@ -393,7 +413,7 @@ Methods (all changes are undoable):
   `updateSelected(patch)`, `updateLayer(id, patch)`, `nudgeSelection(dx, dy)`, `undo()`, `redo()`
 - View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`
 - Theme & features: `setTheme(name)`, `setColors(tokens)`, `clearColors()`, `setFeatures(partial)`, `features`
-- Variables: `setVariables(values)`, `clearVariables()`, `env()`, `resolvedDocument()`
+- Variables: `setVariables(values)`, `clearVariables()`, `registerVariables(group)`, `unregisterVariables(id)`, `env()`, `resolvedDocument()`
 - Export: `exportSvg()`, `exportPng({ scale | width, background })`, `downloadSvg()`, `downloadPng()`,
   `downloadJson()`, `openJsonFile()`
 - Events: `on('change' | 'selectionchange' | 'viewchange', fn)` returns an unsubscribe function

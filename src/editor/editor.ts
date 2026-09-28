@@ -67,6 +67,8 @@ export interface EditorOptions {
   colors?: ThemeColors;
   /** Feature switches: colour mode, gradients, masks, groups, export ... */
   features?: Partial<EditorFeatures>;
+  /** Variables the host app exposes to formulas, grouped for the Variables panel. */
+  variableGroups?: VariableGroup[];
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
   /**
@@ -87,6 +89,22 @@ export interface EditorOptions {
 
 export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer' | 'modifiers' | 'variables';
 
+/** A variable an embedding app exposes to formulas. */
+export interface AppVariable {
+  /** Identifier used in expressions: letters, digits and underscores. */
+  name: string;
+  /** Shown in the Variables panel next to the name. */
+  label?: string;
+  value: number;
+}
+
+/** A named, collapsible list of app variables (shown like the Time list). */
+export interface VariableGroup {
+  id: string;
+  title: string;
+  variables: AppVariable[];
+}
+
 export interface ViewState {
   zoom: number;
   panX: number;
@@ -99,6 +117,10 @@ export interface EditorEvents extends Record<string, unknown[]> {
   viewchange: [view: ViewState];
   previewchange: [on: boolean];
   snapchange: [on: boolean];
+}
+
+function cloneGroup(g: VariableGroup): VariableGroup {
+  return { id: g.id, title: g.title, variables: g.variables.map((v) => ({ ...v })) };
 }
 
 /**
@@ -142,6 +164,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private animTimer: ReturnType<typeof setInterval> | null = null;
   /** Variable values supplied by the host app; they override the document's own. */
   variableOverrides: Env = {};
+  /** Host-registered variable groups (see registerVariables). */
+  variableGroups: VariableGroup[] = [];
   private disposers: (() => void)[] = [];
   private destroyed = false;
 
@@ -154,6 +178,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       createDocument({ width: options.width, height: options.height, background: options.background });
     this.store = new DocumentStore(doc);
     this.features = resolveFeatures({ ...(options.features ?? {}), ...(options.shapes ? { shapes: options.shapes } : {}) });
+    this.variableGroups = (options.variableGroups ?? []).map(cloneGroup);
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -655,7 +680,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   renderOptions(): RenderOptions {
     const f = this.features;
     const out: RenderOptions = f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
-    if (Object.keys(this.variableOverrides).length) out.variables = this.variableOverrides;
+    const vars = { ...this.appVariableValues(), ...this.variableOverrides };
+    if (Object.keys(vars).length) out.variables = vars;
     return out;
   }
 
@@ -725,20 +751,61 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   // -------------------------------------------------------------------------
   // Variables
 
-  /** Feed live values for variables (by name) from the host app; the canvas updates immediately. */
+  /**
+   * Feed live values for variables (by name) from the host app; the canvas
+   * updates immediately. Values for names in a registered group update that
+   * group's displayed value as well.
+   */
   setVariables(values: Env): void {
     this.variableOverrides = { ...this.variableOverrides, ...values };
+    for (const g of this.variableGroups) {
+      for (const v of g.variables) if (v.name in values) v.value = values[v.name];
+    }
     this.canvas.render();
+    this.refreshVariablesPanel();
   }
 
   clearVariables(): void {
     this.variableOverrides = {};
     this.canvas.render();
+    this.refreshVariablesPanel();
   }
 
-  /** Current expression environment: time built-ins, document variables, host overrides. */
+  /**
+   * Register (or replace, by id) a group of app variables. They appear as a
+   * collapsible list in the Variables panel and are defined in every formula
+   * environment, so formulas can use them without errors.
+   */
+  registerVariables(group: VariableGroup): void {
+    const copy = cloneGroup(group);
+    const i = this.variableGroups.findIndex((g) => g.id === group.id);
+    if (i < 0) this.variableGroups.push(copy);
+    else this.variableGroups[i] = copy;
+    this.canvas.render();
+    this.refreshVariablesPanel();
+  }
+
+  unregisterVariables(groupId: string): void {
+    this.variableGroups = this.variableGroups.filter((g) => g.id !== groupId);
+    this.canvas.render();
+    this.refreshVariablesPanel();
+  }
+
+  /** Values of all registered app variables, by name (overrides applied on top by env()). */
+  appVariableValues(): Env {
+    const out: Env = {};
+    for (const g of this.variableGroups) for (const v of g.variables) out[v.name] = v.value;
+    return out;
+  }
+
+  /** Current expression environment: time built-ins, document variables, app variables, host overrides. */
   env(): Env {
-    return documentEnv(this.store.doc, this.variableOverrides);
+    return documentEnv(this.store.doc, { ...this.appVariableValues(), ...this.variableOverrides });
+  }
+
+  private refreshVariablesPanel(): void {
+    if (this.sheetOpen && this.activeTab === 'variables') this.variablesPanel?.render();
+    if (this.propsPanel && this.propsPanel.mode === 'auto') this.propsPanel.render();
   }
 
   /** The document with all bindings evaluated (what the canvas shows and geometry uses). */

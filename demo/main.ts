@@ -11,6 +11,25 @@ const editor = new SvgLayEditor(host, {
 });
 
 // --- Host-app integration examples -------------------------------------------
+// 0. App variables: values the surrounding app exposes to formulas. They show up as a
+//    collapsible list in the Variables tab, and formulas can use them without errors.
+editor.registerVariables({
+  id: 'device',
+  title: 'Device (demo app)',
+  variables: [
+    { name: 'battery', label: 'Battery level 0–100', value: 72 },
+    { name: 'steps', label: 'Steps walked today', value: 4200 },
+    { name: 'temperature', label: 'Outside temperature °C', value: 18 },
+    { name: 'unread', label: 'Unread notifications', value: 3 },
+  ],
+});
+// Simulate live data: the battery drains slowly while the page is open.
+let battery = 72;
+setInterval(() => {
+  battery = battery <= 5 ? 100 : battery - 1;
+  editor.setVariables({ battery });
+}, 3000);
+
 // 1. Theme colours: the page owns a CSS variable and the editor follows it.
 const accent = document.getElementById('accent') as HTMLInputElement;
 const applyAccent = () => document.documentElement.style.setProperty('--slt-accent', accent.value);

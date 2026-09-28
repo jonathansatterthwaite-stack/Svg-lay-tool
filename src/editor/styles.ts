@@ -298,6 +298,9 @@ input.slt-gray-range { background: linear-gradient(90deg, #000, #fff); border-ra
 .slt-modifiers-empty { padding: 8px 0; }
 .slt-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 6px; }
 .slt-var-name { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; }
+.slt-ref-list { margin: 2px 0; }
+.slt-ref-toggle { padding-left: 2px; }
+.slt-ref-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--_slt-panel-2); color: var(--_slt-muted); font-size: 10px; }
 .slt-time-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
 .slt-time-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--_slt-muted); }
 .slt-time-row code { color: var(--_slt-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 78px; }

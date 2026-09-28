@@ -3,7 +3,6 @@ import {
   bindableTargets,
   createBinding,
   createVariable,
-  documentEnv,
   evaluate,
   EXPR_FUNCTION_NAMES,
   removeBinding,
@@ -30,7 +29,8 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
  */
 export class VariablesPanel {
   readonly el: HTMLDivElement;
-  private showTime = false;
+  /** Ids of expanded reference lists ('time' or a group id). */
+  private expanded = new Set<string>();
 
   constructor(private editor: SvgLayEditor) {
     this.el = el('div', { class: 'slt-props slt-variables' });
@@ -71,18 +71,33 @@ export class VariablesPanel {
     }
     for (const v of vars) children.push(this.variableCard(v, vars));
 
-    const toggle = button([icon(this.showTime ? 'chevronDown' : 'chevronRight'), 'Time built-ins'], () => {
-      this.showTime = !this.showTime;
+    // Reference lists: the time built-ins and any groups the host app registered.
+    const env = this.editor.env();
+    children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label })), env));
+    for (const g of this.editor.variableGroups) {
+      children.push(this.referenceList(g.id, g.title, g.variables.map((v) => ({ name: v.name, label: v.label ?? '' })), env));
+    }
+    if (this.expanded.has('time')) {
+      children.push(el('div', { class: 'slt-hint' }, [`Functions: ${EXPR_FUNCTION_NAMES.join(', ')}. Constants: pi, e. Comparisons give 1 or 0; use cond ? a : b.`]));
+    }
+    return section('Variables', children, add);
+  }
+
+  /** A collapsible read-only list of names, descriptions and current values. */
+  private referenceList(id: string, title: string, items: { name: string; label: string }[], env: Record<string, number>): HTMLElement {
+    const open = this.expanded.has(id);
+    const toggle = button([icon(open ? 'chevronDown' : 'chevronRight'), title, el('span', { class: 'slt-ref-count' }, [String(items.length)])], () => {
+      if (open) this.expanded.delete(id);
+      else this.expanded.add(id);
       this.render();
-    }, { cls: 'slt-small' });
-    children.push(el('div', { class: 'slt-btn-row' }, [toggle]));
-    if (this.showTime) {
-      const env = documentEnv(doc);
-      children.push(
+    }, { cls: 'slt-small slt-ref-toggle' });
+    const wrap = el('div', { class: 'slt-ref-list', dataset: { group: id } }, [toggle]);
+    if (open) {
+      wrap.appendChild(
         el(
           'div',
           { class: 'slt-time-list' },
-          TIME_VARIABLES.map((t) =>
+          items.map((t) =>
             el('div', { class: 'slt-time-row', title: t.label }, [
               el('code', {}, [t.name]),
               el('span', { class: 'slt-grow' }, [t.label]),
@@ -91,9 +106,8 @@ export class VariablesPanel {
           ),
         ),
       );
-      children.push(el('div', { class: 'slt-hint' }, [`Functions: ${EXPR_FUNCTION_NAMES.join(', ')}. Constants: pi, e. Comparisons give 1 or 0; use cond ? a : b.`]));
     }
-    return section('Variables', children, add);
+    return wrap;
   }
 
   private variableCard(v: Variable, all: Variable[]): HTMLElement {
@@ -149,7 +163,7 @@ export class VariablesPanel {
     if (bindings.length === 0) {
       children.push(el('div', { class: 'slt-hint' }, ['No bindings. Example: bind Rotation to  hours12 * 30 + minutes / 2  for an hour hand, or Visible to  count >= 3 .']));
     }
-    const env = documentEnv(this.editor.document, this.editor.variableOverrides);
+    const env = this.editor.env();
     for (const b of bindings) children.push(this.bindingCard(layer, b, targets, env));
     return section(`Bindings · ${layer.name}`, children);
   }
