@@ -14,7 +14,7 @@ import {
 import { EFFECT_DEFS } from './effects';
 import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Binding, Effect, Fill, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
+import type { Binding, Effect, Fill, GridSettings, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -25,7 +25,10 @@ export interface CreateDocumentOptions {
   background?: string | null;
   layers?: Layer[];
   variables?: Variable[];
+  grid?: Partial<GridSettings>;
 }
+
+export const DEFAULT_GRID: GridSettings = { width: 32, height: 32, visible: false, opacity: 0.25 };
 
 export function createDocument(opts: CreateDocumentOptions = {}): SvgDocument {
   return {
@@ -35,7 +38,13 @@ export function createDocument(opts: CreateDocumentOptions = {}): SvgDocument {
     background: opts.background === undefined ? null : opts.background,
     layers: opts.layers ?? [],
     variables: opts.variables ?? [],
+    grid: { ...DEFAULT_GRID, ...(opts.grid ?? {}) },
   };
+}
+
+/** Snap a value to the nearest multiple of `step` (step ≤ 0 returns the value). */
+export function snapTo(value: number, step: number): number {
+  return step > 0 ? Math.round(value / step) * step : value;
 }
 
 export type ShapeLayerInit = Partial<Omit<ShapeLayer, 'type' | 'id'>> & { shape?: string };
@@ -661,6 +670,19 @@ export function normalizeDocument(input: unknown): SvgDocument {
     background: typeof raw.background === 'string' ? raw.background : null,
     layers,
     variables: Array.isArray(raw.variables) ? raw.variables.map(normalizeVariable).filter((v): v is Variable => !!v) : [],
+    grid: normalizeGrid(raw.grid),
+  };
+}
+
+function normalizeGrid(input: unknown): GridSettings {
+  if (!input || typeof input !== 'object') return { ...DEFAULT_GRID };
+  const raw = input as Record<string, unknown>;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  return {
+    width: Math.max(1, num(raw.width, DEFAULT_GRID.width)),
+    height: Math.max(1, num(raw.height, DEFAULT_GRID.height)),
+    visible: typeof raw.visible === 'boolean' ? raw.visible : DEFAULT_GRID.visible,
+    opacity: Math.min(1, Math.max(0, num(raw.opacity, DEFAULT_GRID.opacity))),
   };
 }
 

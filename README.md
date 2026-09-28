@@ -425,10 +425,12 @@ On desktop the side column keeps the Layers panel on top and organises the
 tools into tabs beneath it: Canvas, Layer, Modifiers and Variables (the same
 tabs the mobile bottom sheet uses, plus Shapes and Layers there).
 
-A **Preview** switch at the top of the Layers panel (and Layers tab on mobile)
-shows the image exactly as it will be produced: no handles, mask ghosts or
-editing aids. `editor.setPreview(true)` does the same; it emits
-`previewchange`. The strip can be hidden with `features.layerStrip: false`.
+A **Preview** switch in the toolbar shows the image exactly as it will be
+produced: no handles, mask ghosts or editing aids. `editor.setPreview(true)`
+does the same; it emits `previewchange`. Next to it, **Snap** aligns moves,
+resizes and arrow-key nudges to the document grid (`editor.setSnap(true)`).
+The grid itself (cell width and height, visibility and line opacity) is set in
+the Canvas tab, saved with the document as `doc.grid`, and never exported. The strip can be hidden with `features.layerStrip: false`.
 
 ### Keyboard & mouse
 

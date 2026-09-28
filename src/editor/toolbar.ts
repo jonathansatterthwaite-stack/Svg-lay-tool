@@ -8,6 +8,8 @@ export class Toolbar {
   private buttons = new Map<string, HTMLButtonElement>();
   private zoomLabel: HTMLSpanElement;
   private menu: HTMLDivElement;
+  private previewToggle: HTMLInputElement;
+  private snapToggle: HTMLInputElement;
 
   constructor(private editor: SvgLayEditor) {
     const ed = editor;
@@ -31,6 +33,13 @@ export class Toolbar {
       ]),
     ]);
 
+    this.previewToggle = el('input', { type: 'checkbox', role: 'switch' });
+    this.previewToggle.addEventListener('change', () => ed.setPreview(this.previewToggle.checked));
+    this.snapToggle = el('input', { type: 'checkbox', role: 'switch' });
+    this.snapToggle.addEventListener('change', () => ed.setSnap(this.snapToggle.checked));
+    const switchRow = (label: string, ic: IconName, input: HTMLInputElement, title: string) =>
+      el('label', { class: 'slt-switch', title }, [icon(ic), el('span', {}, [label]), input]);
+
     this.el = el('div', { class: 'slt-toolbar' }, [
       b('undo', 'undo', 'Undo (Ctrl+Z)', () => ed.undo()),
       b('redo', 'redo', 'Redo (Ctrl+Y)', () => ed.redo()),
@@ -44,6 +53,9 @@ export class Toolbar {
       b('forward', 'forward', 'Bring forward (])', () => ed.reorderSelection('forward')),
       b('backward', 'backward', 'Send backward ([)', () => ed.reorderSelection('backward')),
       b('back', 'back', 'Send to back (Ctrl+[)', () => ed.reorderSelection('back')),
+      sep(),
+      switchRow('Snap', 'grid', this.snapToggle, 'Snap moves and resizes to the grid (set the grid in the Canvas tab)'),
+      switchRow('Preview', 'eye', this.previewToggle, 'Show the image exactly as it will be produced'),
       el('span', { class: 'slt-spacer' }),
       b('zoomOut', 'zoomOut', 'Zoom out (Ctrl+-)', () => ed.zoomBy(0.8)),
       this.zoomLabel,
@@ -92,6 +104,9 @@ export class Toolbar {
     set('delete', sel.length > 0);
     for (const k of ['front', 'forward', 'backward', 'back']) set(k, sel.length > 0);
     this.zoomLabel.textContent = `${Math.round(ed.view.zoom * 100)}%`;
+    this.previewToggle.checked = ed.preview;
+    this.snapToggle.checked = ed.snap;
+    this.el.classList.toggle('slt-previewing', ed.preview);
   }
 
   destroy(): void {

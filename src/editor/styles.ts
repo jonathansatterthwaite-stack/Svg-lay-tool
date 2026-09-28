@@ -213,13 +213,15 @@ export const EDITOR_STYLES = `
 .slt-side .slt-tab .slt-icon, .slt-side .slt-tab .slt-icon svg { width: 14px; height: 14px; }
 .slt-side .slt-tab[data-active] { border-bottom-color: var(--_slt-accent); }
 .slt-side .slt-sheet { flex: 1 1 auto; border-top: 0; }
-.slt-panel-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-right: 8px; }
-.slt-preview-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--_slt-muted); cursor: pointer; }
-.slt-preview-toggle input { appearance: none; -webkit-appearance: none; width: 30px; height: 16px; margin: 0; border-radius: 8px; background: var(--_slt-border); position: relative; cursor: pointer; transition: background 0.15s; }
-.slt-preview-toggle input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left 0.15s; }
-.slt-preview-toggle input:checked { background: var(--_slt-accent); }
-.slt-preview-toggle input:checked::after { left: 16px; }
-.slt-layers.slt-previewing .slt-preview-toggle { color: var(--_slt-accent); }
+.slt-switch { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 6px; border-radius: var(--_slt-radius); font-size: 12px; color: var(--_slt-muted); cursor: pointer; white-space: nowrap; }
+.slt-switch:hover { background: var(--_slt-hover); }
+.slt-switch input { appearance: none; -webkit-appearance: none; width: 30px; height: 16px; margin: 0; border-radius: 8px; background: var(--_slt-border); position: relative; cursor: pointer; transition: background 0.15s; flex: none; }
+.slt-switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.slt-switch input:checked { background: var(--_slt-accent); }
+.slt-switch input:checked::after { left: 16px; }
+.slt-switch:has(input:checked) { color: var(--_slt-text); }
+.slt-toolbar.slt-previewing .slt-switch:has(input:checked) { color: var(--_slt-accent); }
+.slt-grid-lines { stroke: var(--_slt-text); vector-effect: non-scaling-stroke; pointer-events: none; }
 .slt-stage.slt-preview .slt-doc-frame { stroke: var(--_slt-accent); }
 .slt-stage.slt-preview [data-layer-id] { cursor: default; }
 .slt-layers-list { flex: 1; overflow: auto; padding: 2px 4px 8px; }

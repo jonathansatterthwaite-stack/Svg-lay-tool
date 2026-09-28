@@ -98,6 +98,20 @@ export class PropertiesPanel {
     }
     canvasChildren.push(el('div', { class: 'slt-hint' }, ['Select a layer to edit it, or pick a shape from the library to add one.']));
     this.el.appendChild(section('Canvas', canvasChildren));
+
+    const grid = this.editor.grid;
+    const setGrid = (patch: Partial<typeof grid>, commit = true) => this.applyDoc((d) => ({ ...d, grid: { ...(d.grid ?? grid), ...patch } }), commit);
+    this.el.appendChild(
+      section('Grid', [
+        el('div', { class: 'slt-grid2' }, [
+          miniField('W', numberInput(grid.width, (v) => setGrid({ width: Math.max(1, v) }), { min: 1 })),
+          miniField('H', numberInput(grid.height, (v) => setGrid({ height: Math.max(1, v) }), { min: 1 })),
+        ]),
+        row('', checkbox('Show grid', grid.visible, (c) => setGrid({ visible: c }))),
+        row('Line opacity', slider(grid.opacity, (v, c) => setGrid({ opacity: v }, c), { min: 0, max: 1, step: 0.01 })),
+        el('div', { class: 'slt-hint' }, ['The grid is an editing aid and never appears in exports. Turn on Snap in the toolbar to align moves and resizes to it.']),
+      ]),
+    );
     this.el.appendChild(
       section('Shortcuts', [
         el('div', { class: 'slt-hint' }, ['Hold a layer to pick it up · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°)']),

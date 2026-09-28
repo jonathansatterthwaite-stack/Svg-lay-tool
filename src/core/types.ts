@@ -268,4 +268,16 @@ export interface SvgDocument {
   layers: Layer[];
   /** Variables available to bindings. */
   variables?: Variable[];
+  /** Editing grid (never rendered into exports). */
+  grid?: GridSettings;
+}
+
+export interface GridSettings {
+  /** Cell size in document units. */
+  width: number;
+  height: number;
+  /** Draw the grid on the canvas. */
+  visible: boolean;
+  /** Line opacity 0..1. */
+  opacity: number;
 }

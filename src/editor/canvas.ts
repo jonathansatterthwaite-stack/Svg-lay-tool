@@ -6,6 +6,8 @@ import {
   layerWorldMatrix,
   layerLocalBounds,
   setBinding,
+  snapTo,
+  layerBox,
   findLayer,
   invert,
   layerFrameBounds,
@@ -84,6 +86,9 @@ export class CanvasView {
   private clipRect: SVGRectElement;
   private docG: SVGGElement;
   private frameRect: SVGRectElement;
+  private gridPattern: SVGPatternElement;
+  private gridPath: SVGPathElement;
+  private gridRect: SVGRectElement;
   private overlay: SVGGElement;
   private hint: HTMLDivElement;
   private drag: DragState | null = null;
@@ -107,7 +112,11 @@ export class CanvasView {
     this.checker = svgEl('rect', { fill: `url(#${this.idPrefix}checker)` });
     this.docG = svgEl('g', { class: 'slt-doc', 'clip-path': `url(#${this.idPrefix}clip)` });
     this.frameRect = svgEl('rect', { class: 'slt-doc-frame' });
-    this.viewG = svgEl('g', { class: 'slt-view' }, [this.checker, this.docG, this.frameRect]);
+    this.gridPath = svgEl('path', { class: 'slt-grid-lines', fill: 'none' });
+    this.gridPattern = svgEl('pattern', { id: `${this.idPrefix}grid`, patternUnits: 'userSpaceOnUse', width: 32, height: 32 }, [this.gridPath]);
+    this.staticDefs.appendChild(this.gridPattern);
+    this.gridRect = svgEl('rect', { fill: `url(#${this.idPrefix}grid)`, 'pointer-events': 'none' });
+    this.viewG = svgEl('g', { class: 'slt-view' }, [this.checker, this.docG, this.gridRect, this.frameRect]);
     this.overlay = svgEl('g', { class: 'slt-overlay' });
     this.stage = svgEl('svg', { class: 'slt-stage' }, [this.staticDefs, this.docDefs, this.viewG, this.overlay]);
     this.hint = el('div', { class: 'slt-canvas-hint' }, ['Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan']);
@@ -243,9 +252,18 @@ export class CanvasView {
         r.setAttribute('y', String(cell / 2));
       }
     }
-    for (const r of [this.checker, this.clipRect, this.frameRect]) {
+    for (const r of [this.checker, this.clipRect, this.frameRect, this.gridRect]) {
       r.setAttribute('width', String(doc.width));
       r.setAttribute('height', String(doc.height));
+    }
+    const grid = this.editor.grid;
+    const showGrid = grid.visible && !this.editor.preview && grid.opacity > 0;
+    this.gridRect.style.display = showGrid ? '' : 'none';
+    if (showGrid) {
+      this.gridPattern.setAttribute('width', String(grid.width));
+      this.gridPattern.setAttribute('height', String(grid.height));
+      this.gridPath.setAttribute('d', `M${grid.width} 0 L0 0 0 ${grid.height}`);
+      this.gridRect.setAttribute('opacity', String(grid.opacity));
     }
 
     // Bindings are evaluated by the renderer itself (with the host's variable overrides).
@@ -622,9 +640,21 @@ export class CanvasView {
         d.moved = true;
         if (e.shiftKey) delta = Math.abs(delta.x) > Math.abs(delta.y) ? { x: delta.x, y: 0 } : { x: 0, y: delta.y };
         let doc = d.origDoc;
+        const snap = this.editor.snap ? this.editor.grid : null;
         for (const item of d.items) {
           const dl = applyToVector(item.parentInv, delta);
-          doc = updateLayer(doc, item.id, { x: round(item.x + dl.x), y: round(item.y + dl.y) });
+          let nx = item.x + dl.x;
+          let ny = item.y + dl.y;
+          if (snap) {
+            // Snap the box's top-left corner to the grid (in the parent's coordinates).
+            const layer = findLayer(d.origDoc, item.id);
+            const box = layer ? layerBox(layer) : null;
+            const ox = box ? box.x : 0;
+            const oy = box ? box.y : 0;
+            nx = snapTo(nx + ox, snap.width) - ox;
+            ny = snapTo(ny + oy, snap.height) - oy;
+          }
+          doc = updateLayer(doc, item.id, { x: round(nx), y: round(ny) });
         }
         this.editor.store.update(doc);
         break;
@@ -669,8 +699,13 @@ export class CanvasView {
 
   private applyScale(d: Extract<DragState, { kind: 'scale' }>, worldPointer: Point, keepAspect: boolean, fromCentre: boolean): void {
     // Everything happens in the frame: the parent's axes with the layer origin at (0,0).
-    const u = applyToPoint(d.frameInv, worldPointer);
+    let u = applyToPoint(d.frameInv, worldPointer);
     const { frame, dir, layer } = d;
+    if (this.editor.snap) {
+      // Snap the dragged edge/corner to the grid in the parent's coordinates.
+      const g = this.editor.grid;
+      u = { x: snapTo(u.x + layer.x, g.width) - layer.x, y: snapTo(u.y + layer.y, g.height) - layer.y };
+    }
     const left = frame.x;
     const right = frame.x + frame.width;
     const top = frame.y;

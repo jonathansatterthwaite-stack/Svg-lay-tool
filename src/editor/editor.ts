@@ -27,6 +27,7 @@ import {
   updateLayers,
   walkLayers,
   getShape,
+  DEFAULT_GRID,
   documentUsesTime,
   documentEnv,
   resolveDocument,
@@ -97,6 +98,7 @@ export interface EditorEvents extends Record<string, unknown[]> {
   selectionchange: [ids: string[]];
   viewchange: [view: ViewState];
   previewchange: [on: boolean];
+  snapchange: [on: boolean];
 }
 
 /**
@@ -116,6 +118,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   hoverId: string | null = null;
   /** When true the canvas shows the exact output: no handles, ghosts or editing aids. */
   preview = false;
+  /** Snap moves, resizes and nudges to the document grid. */
+  snap = false;
   view: ViewState = { zoom: 1, panX: 0, panY: 0 };
 
   private rootEl: HTMLElement;
@@ -655,6 +659,19 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     return out;
   }
 
+  /** Toggle snapping to the document grid. */
+  setSnap(on: boolean): void {
+    if (this.snap === on) return;
+    this.snap = on;
+    this.toolbar?.render();
+    this.emit('snapchange', on);
+  }
+
+  /** The document grid (defaults when a loaded file has none). */
+  get grid() {
+    return this.store.doc.grid ?? DEFAULT_GRID;
+  }
+
   /** Toggle the exact-output preview on the canvas. */
   setPreview(on: boolean): void {
     if (this.preview === on) return;
@@ -773,7 +790,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     else if (key === ']') this.reorderSelection(mod ? 'front' : 'forward');
     else if (key === '[') this.reorderSelection(mod ? 'back' : 'backward');
     else if (key.startsWith('arrow')) {
-      const step = e.shiftKey ? 10 : 1;
+      const g = this.grid;
+      const step = this.snap ? (key === 'arrowleft' || key === 'arrowright' ? g.width : g.height) : e.shiftKey ? 10 : 1;
       const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0;
       const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0;
       this.nudgeSelection(dx, dy);
