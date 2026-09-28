@@ -97,3 +97,15 @@ export function fmtNum(n: number, digits = 2): string {
   const r = Math.round(n * 10 ** digits) / 10 ** digits;
   return String(r === 0 ? 0 : r);
 }
+
+/**
+ * True while the user is typing in a text-like input inside `container`, in
+ * which case a panel must not rebuild its DOM (the input would lose focus).
+ * Selects, checkboxes, sliders and colour pickers finish their edit on
+ * `change`, so rebuilding after them is fine.
+ */
+export function isTypingInside(container: HTMLElement, root: ShadowRoot | Document): boolean {
+  const active = root.activeElement;
+  if (!(active instanceof HTMLInputElement) || !container.contains(active)) return false;
+  return active.type === 'text' || active.type === 'number' || active.type === 'search';
+}

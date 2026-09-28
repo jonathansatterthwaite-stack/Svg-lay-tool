@@ -1,4 +1,5 @@
 import { fmt } from './matrix';
+import { starBendForPolygon } from './modifiers';
 
 /** A numeric parameter a shape exposes (corner radius, star points ...). */
 export interface ShapeParam {
@@ -471,8 +472,7 @@ export function resolveShapeAlias(
     const points = typeof params.points === 'number' ? Math.round(params.points) : 5;
     const inner = typeof params.inner === 'number' ? params.inner / 100 : 0.45;
     out.sides = points;
-    const half = Math.PI / points;
-    modifiers = [{ type: 'edges', subdivisions: 1, bend: (-(Math.cos(half) - inner) / Math.sin(half)) * 100, smooth: false }];
+    modifiers = [{ type: 'edges', subdivisions: 1, bend: starBendForPolygon(points, inner), smooth: false }];
   }
   if ((shapeId === 'quad' || shapeId === 'trapezoid') && modifiers) {
     if (typeof params.top === 'number') modifiers[0].top = params.top;

@@ -43,7 +43,13 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
   const resolved = resolveShapeAlias(init.shape ?? 'polygon', init.params ?? {});
   const def = getShape(resolved.id);
   const aliasMods = (resolved.modifiers ?? []).map((m) => normalizeModifier(m)).filter((m): m is Modifier => !!m);
-  init = { ...init, shape: def.id, params: resolved.params, modifiers: [...aliasMods, ...(init.modifiers ?? [])] };
+  // Params merged with defaults so a partial override never drops one.
+  init = {
+    ...init,
+    shape: def.id,
+    params: { ...defaultShapeParams(def), ...resolved.params },
+    modifiers: [...aliasMods, ...(init.modifiers ?? [])],
+  };
   return {
     type: 'shape',
     id: createId('l'),
@@ -57,7 +63,7 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
     rotation: 0,
     modifiers: [],
     shape: def.id,
-    params: { ...defaultShapeParams(def), ...(init.params ?? {}) },
+    params: init.params ?? defaultShapeParams(def),
     width: 100,
     height: 100,
     stretch: { ...IDENTITY2 },
@@ -65,8 +71,6 @@ export function createShapeLayer(init: ShapeLayerInit = {}): ShapeLayer {
     flipY: false,
     color: '#e8e8e8',
     ...stripUndefined(init),
-    // params merged above; never let a partial override drop defaults
-    ...(init.params ? { params: { ...defaultShapeParams(def), ...init.params } } : {}),
   };
 }
 
@@ -503,11 +507,6 @@ export function layerLocalMatrix(layer: Layer): Mat {
  */
 export function layerFrameMatrix(layer: Layer): Mat {
   return translate(layer.x, layer.y);
-}
-
-/** Rotation of the handle frame relative to the parent (always 0 now). */
-export function layerFrameRotation(_layer: Layer): number {
-  return 0;
 }
 
 /** Bounds in the layer's own (pre-transform) coordinate system. */

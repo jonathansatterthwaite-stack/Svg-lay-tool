@@ -331,9 +331,6 @@ function applyOverrideDeep(node: VNode, override: PaintOverride): VNode {
     if (override.ghost) applyGhost(out);
   }
   if (out.attrs.style) delete out.attrs.style;
-  if (node.tag === 'g' && out.attrs.mask) {
-    // Masks within a mask are honoured (the def already exists).
-  }
   out.children = node.children.map((c) => (typeof c === 'string' ? c : applyOverrideDeep(c, override)));
   return out;
 }

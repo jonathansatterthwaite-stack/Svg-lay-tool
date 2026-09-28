@@ -123,7 +123,6 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private sheetOpen = true;
   private currentLayout: 'desktop' | 'mobile' | null = null;
   private layoutObserver: ResizeObserver | null = null;
-  private panelsEnabled = { toolbar: true, library: true, layers: true, properties: true };
   private toolbar: Toolbar | null = null;
   private library: LibraryPanel | null = null;
   private layersPanel: LayersPanel | null = null;
@@ -152,7 +151,6 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.rootEl = el('div', { class: 'slt-root', dataset: { theme: options.theme ?? 'dark' } });
     if (options.colors) this.setColors(options.colors);
     const panels = { toolbar: true, library: true, layers: true, properties: true, ...(options.panels ?? {}) };
-    this.panelsEnabled = panels;
     if (!panels.toolbar) this.rootEl.dataset.noToolbar = '';
     if (!panels.library) this.rootEl.dataset.noLibrary = '';
     if (!panels.layers && !panels.properties) this.rootEl.dataset.noSide = '';

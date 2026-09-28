@@ -7,19 +7,14 @@ import {
   layerFrameMatrix,
   rotateLayer,
   scaleLayerBox,
-  layerWorldBounds,
   locateLayer,
   multiply,
   parentWorldMatrix,
   rectCorners,
-  rectsIntersect,
   renderDocumentParts,
-  rotate,
   updateLayer,
   vnodeToDom,
-  type GroupLayer,
   type Layer,
-  type ShapeLayer,
   type Mat,
   type Point,
   type Rect,
@@ -132,7 +127,6 @@ export class CanvasView {
     on(this.stage, 'pointerup', (e) => this.onPointerUp(e));
     on(this.stage, 'pointercancel', (e) => this.onPointerUp(e));
     on(this.stage, 'wheel', (e) => this.onWheel(e), { passive: false });
-    on(this.stage, 'pointerleave', () => this.editor.setHover(null));
     on(this.el, 'keydown', (e) => {
       if (e.key === ' ' && !this.spaceDown) {
         this.spaceDown = true;
@@ -557,11 +551,7 @@ export class CanvasView {
       this.editor.viewChanged();
       return;
     }
-    if (!d) {
-      const deep = this.hitLayerId(e.target);
-      this.editor.setHover(deep ? this.resolveHit(deep) : null);
-      return;
-    }
+    if (!d) return;
     switch (d.kind) {
       case 'press': {
         // Moved before the hold completed: this is a pan.
@@ -690,12 +680,6 @@ export class CanvasView {
 
 function round(n: number): number {
   return Math.round(n * 100) / 100;
-}
-
-function normalize(v: Point): Point | null {
-  const len = Math.hypot(v.x, v.y);
-  if (len < 1e-9) return null;
-  return { x: v.x / len, y: v.y / len };
 }
 
 function resizeCursor(angleDeg: number): string {

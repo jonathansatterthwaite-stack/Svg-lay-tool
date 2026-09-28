@@ -16,7 +16,7 @@ import {
   type Modifier,
   type ModifierType,
 } from '../core';
-import { el } from './dom';
+import { el, isTypingInside } from './dom';
 import type { SvgLayEditor } from './editor';
 import { effectParamRows, effectsEditor } from './effects-editor';
 import { allowedEffectTypes, type EditorFeatures } from './features';
@@ -33,8 +33,8 @@ export class ModifiersPanel {
   }
 
   render(): void {
-    const active = this.editor.root instanceof ShadowRoot ? this.editor.root.activeElement : document.activeElement;
-    if (active && this.el.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT') && (active as HTMLInputElement).type !== 'checkbox') return;
+    // Never yank a text field out from under the user's cursor; the next commit re-renders.
+    if (isTypingInside(this.el, this.editor.root instanceof ShadowRoot ? this.editor.root : document)) return;
     this.el.replaceChildren();
     const layers = this.editor.selectedLayers();
     if (layers.length !== 1) {
@@ -62,7 +62,7 @@ export class ModifiersPanel {
     const f = this.editor.features;
     const out: ModifierType[] = [];
     const isShape = layer.type === 'shape';
-    if (isShape && (f.gradients || f.colorMode !== 'monochrome')) out.push('fill');
+    if (isShape) out.push('fill');
     if (isShape && f.strokes) out.push('stroke');
     if (isShape) out.push('deform', 'edges');
     if (f.effects !== false && allowedEffectTypes(f).length) out.push('effect');
@@ -143,7 +143,7 @@ export class ModifiersPanel {
       case 'fill': {
         const fill = m.fill;
         const setFill = (fl: Fill, c = true) => patch({ fill: fl } as Partial<Modifier>, c);
-        const types: { value: Fill['type']; label: string }[] = [{ value: 'solid', label: 'Solid colour' }];
+        const types: { value: Fill['type']; label: string }[] = [{ value: 'solid', label: mode === 'monochrome' ? 'Filled' : 'Solid colour' }];
         if (f.gradients) types.push({ value: 'linear', label: 'Linear gradient' }, { value: 'radial', label: 'Radial gradient' });
         types.push({ value: 'none', label: 'None (no fill)' });
         if (!types.some((t) => t.value === fill.type)) types.push({ value: fill.type, label: `${fill.type} gradient` });

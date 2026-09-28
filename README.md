@@ -411,16 +411,18 @@ drives the tabs programmatically.
 
 ```ts
 import {
-  createDocument, createShapeLayer, createGroupLayer, createMaskSettings, createEffect,
-  insertLayer, groupLayers, renderDocumentToString, normalizeDocument,
+  createDocument, createShapeLayer, createModifier, createEffect, createEffectModifier, createMaskModifier,
+  insertLayer, renderDocumentToString, normalizeDocument,
 } from 'svg-lay-tool/core';
 
 let doc = createDocument({ width: 256, height: 256 });
-doc = insertLayer(doc, createShapeLayer({ shape: 'shield', x: 128, y: 128, width: 200, height: 220, fill: { type: 'solid', color: '#334' } }));
-doc = insertLayer(doc, createShapeLayer({ shape: 'star', x: 128, y: 120, width: 120, height: 120, fill: { type: 'solid', color: '#fc5' },
-  effects: [createEffect('outline', { width: 3, color: '#000' })] }));
+doc = insertLayer(doc, createShapeLayer({ shape: 'shield', x: 128, y: 128, width: 200, height: 220, color: '#334' }));
+// A star: a pentagon whose edges are subdivided once and bent inwards, with an outline effect.
+doc = insertLayer(doc, createShapeLayer({ shape: 'polygon', params: { sides: 5 }, x: 128, y: 120, width: 120, height: 120, color: '#fc5',
+  modifiers: [createModifier('edges', { subdivisions: 1, bend: -64 }), createEffectModifier('outline', { width: 3, color: '#000' })] }));
+// A frosted lens: a mask that blurs whatever is below it inside the circle.
 doc = insertLayer(doc, createShapeLayer({ shape: 'ellipse', x: 170, y: 90, width: 90, height: 90,
-  mask: createMaskSettings({ mode: 'filter', effects: [createEffect('blur', { radius: 3 })] }) }));
+  modifiers: [createMaskModifier({ mode: 'filter', effects: [createEffect('blur', { radius: 3 })] })] }));
 
 const svg = renderDocumentToString(doc); // '<svg xmlns=…'
 ```

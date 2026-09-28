@@ -12,7 +12,7 @@ import {
   setLayerBoxSize,
   updateLayer,
 } from '../core';
-import { el } from './dom';
+import { el, isTypingInside } from './dom';
 import type { SvgLayEditor } from './editor';
 import { button, checkbox, colorField, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
@@ -33,11 +33,8 @@ export class PropertiesPanel {
   }
 
   render(): void {
-    const active = this.activeElement();
-    if (active && this.el.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) {
-      // Never yank an input out from under the user's cursor; the next commit re-renders.
-      if ((active as HTMLInputElement).type !== 'checkbox') return;
-    }
+    // Never yank a text field out from under the user's cursor; the next commit re-renders.
+    if (isTypingInside(this.el, this.editor.root instanceof ShadowRoot ? this.editor.root : document)) return;
     this.el.replaceChildren();
     const layers = this.editor.selectedLayers();
     if (this.mode === 'document') {
@@ -56,11 +53,6 @@ export class PropertiesPanel {
       this.modifiers.render();
       this.el.appendChild(this.modifiers.el);
     }
-  }
-
-  private activeElement(): Element | null {
-    const root = this.editor.root;
-    return root instanceof ShadowRoot ? root.activeElement : document.activeElement;
   }
 
   // -------------------------------------------------------------------------

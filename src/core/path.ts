@@ -57,8 +57,9 @@ export function flattenPath(d: string, tolerance = 2): Polygon[] {
       lastCmd = 'Z';
       continue;
     }
-    while (i < nums.length || (C === 'Z' && i === 0)) {
-      switch (C) {
+    let op = C; // after the first pair of an M, further pairs are implicit L
+    while (i < nums.length) {
+      switch (op) {
         case 'M': {
           const [px, py] = take(2);
           if (cur.length) close();
@@ -67,6 +68,7 @@ export function flattenPath(d: string, tolerance = 2): Polygon[] {
           sx = x;
           sy = y;
           cur = [{ x, y }];
+          op = 'L';
           break;
         }
         case 'L': {
@@ -145,15 +147,6 @@ export function flattenPath(d: string, tolerance = 2): Polygon[] {
       }
       if (C !== 'C' && C !== 'S' && C !== 'Q' && C !== 'T') lastCtrl = null;
       lastCmd = C;
-      if (C === 'M' && !rel) {
-        // subsequent pairs after M are implicit L
-        while (i < nums.length) {
-          const [px, py] = take(2);
-          x = px;
-          y = py;
-          push({ x, y });
-        }
-      }
     }
   }
   if (cur.length) close();
