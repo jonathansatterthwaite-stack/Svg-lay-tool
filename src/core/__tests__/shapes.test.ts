@@ -54,13 +54,6 @@ describe('shape library', () => {
     expect(d).toMatch(/^M50 50 L-50 50 L0 -50 Z$|^M-50 50 L0 -50 L50 50 Z$|^M0 -50 L50 50 L-50 50 Z$/);
   });
 
-  it('corner radius rounds polygon corners with arcs and clamps to the edge', () => {
-    const d = shapePath('polygon', 100, 40, { sides: 4, radius: 50 }); // 50% of min/2 → r = 10
-    expect(d).toContain('A10 10');
-    expect(d.match(/A/g)).toHaveLength(4);
-    const clamped = shapePath('polygon', 100, 20, { sides: 4, radius: 100 }); // r would be 10 = half the short edge
-    expect(clamped).not.toMatch(/NaN/);
-  });
 
   it('ellipse covers disc, ring, pie and annular sector', () => {
     expect(shapePath('ellipse', 100, 100, { sweep: 360, hole: 0 }).match(/A/g)).toHaveLength(2);

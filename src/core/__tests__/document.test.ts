@@ -272,13 +272,22 @@ describe('document ops', () => {
   it('createShapeLayer merges params with defaults and resolves aliases', () => {
     const l = createShapeLayer({ shape: 'star', params: { points: 8 } });
     expect(l.shape).toBe('polygon');
-    expect(l.params).toEqual({ sides: 8, radius: 0 });
+    expect(l.params).toEqual({ sides: 8 });
     expect(l.modifiers[0].type).toBe('edges');
     const legacy = createShapeLayer({ shape: 'hexagon' });
     expect(legacy.shape).toBe('polygon');
     expect(legacy.params.sides).toBe(6);
     expect(legacy.name).toBe('Polygon');
     expect(createGroupLayer().children).toEqual([]);
+  });
+
+  it('converts a legacy corner radius parameter into a round modifier', () => {
+    const doc = normalizeDocument({ layers: [{ type: 'shape', shape: 'polygon', params: { sides: 4, radius: 40 } }] });
+    const l = doc.layers[0];
+    expect(l.type === 'shape' && l.params).toEqual({ sides: 4 });
+    expect(l.modifiers[0]).toMatchObject({ type: 'round', radius: 40 });
+    const rr = createShapeLayer({ shape: 'rounded-rect', params: { radius: 25 } });
+    expect(rr.modifiers[0]).toMatchObject({ type: 'round', radius: 50 });
   });
 
   it('normalises legacy shape ids in loaded documents', () => {

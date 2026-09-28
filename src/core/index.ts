@@ -7,6 +7,8 @@ export * from './shapes';
 export * from './effects';
 export * from './path';
 export * from './modifiers';
+export * from './expr';
+export * from './bindings';
 export * from './document';
 export * from './render';
 export * from './store';

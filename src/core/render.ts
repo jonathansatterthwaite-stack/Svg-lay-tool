@@ -1,4 +1,6 @@
+import { documentEnv, resolveDocument } from './bindings';
 import { recolor, toGray } from './color';
+import type { Env } from './expr';
 import { buildFilter, effectSpill, effectsForColorMode } from './effects';
 import { childrenBounds, isIdentity2, layerLocalBounds, layerLocalMatrix } from './document';
 import { applyGeometryModifiers, layerEffects, layerFill, layerMask, layerStroke } from './modifiers';
@@ -41,6 +43,10 @@ export interface RenderOptions {
    * still be picked up; every other layer gets `pointer-events: none`.
    */
   activeIds?: Iterable<string>;
+  /** Variable values that override the document's own (a host app feeding live data). */
+  variables?: Env;
+  /** The moment used for time built-ins (default: now). */
+  time?: Date | number;
 }
 
 /** Paint overrides used when drawing a layer as mask content or as an editor ghost. */
@@ -102,7 +108,8 @@ export function renderDocument(doc: SvgDocument, opts: RenderOptions = {}): VNod
 }
 
 /** Defs and body separately, for embedding the drawing inside another SVG. */
-export function renderDocumentParts(doc: SvgDocument, opts: RenderOptions = {}): { defs: VNode[]; body: VNode[] } {
+export function renderDocumentParts(input: SvgDocument, opts: RenderOptions = {}): { defs: VNode[]; body: VNode[] } {
+  const doc = resolveDocument(input, documentEnv(input, opts.variables, opts.time));
   const ctx: Ctx = {
     doc,
     defs: [],
@@ -373,7 +380,8 @@ function renderShape(
     if (stroke && stroke.width > 0) {
       attrs.stroke = applyColorMode(stroke.color, ctx.colorMode, ctx.monoColor);
       attrs['stroke-width'] = fmt(stroke.width);
-      attrs['stroke-linejoin'] = 'round';
+      attrs['stroke-linejoin'] = 'miter';
+      attrs['stroke-miterlimit'] = 8;
     }
   }
   return h('path', attrs);

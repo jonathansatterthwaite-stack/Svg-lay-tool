@@ -242,6 +242,7 @@ export class CanvasView {
       r.setAttribute('height', String(doc.height));
     }
 
+    // Bindings are evaluated by the renderer itself (with the host's variable overrides).
     const { defs, body } = this.editor.preview
       ? renderDocumentParts(doc, { idPrefix: this.idPrefix, ...this.editor.renderOptions() })
       : renderDocumentParts(doc, { idPrefix: this.idPrefix, interactive: true, ...this.editor.canvasRenderOptions() });
@@ -255,7 +256,7 @@ export class CanvasView {
 
   /** Frame (translation + rotation) of a layer in screen space, plus its axis-aligned box in that frame. */
   private screenFrame(id: string): { toScreen: (p: Point) => Point; box: Rect; layer: Layer } | null {
-    const doc = this.editor.document;
+    const doc = this.editor.resolvedDocument();
     const layer = findLayer(doc, id);
     if (!layer) return null;
     const box = layerFrameBounds(layer);

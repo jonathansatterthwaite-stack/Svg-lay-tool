@@ -148,15 +148,54 @@ simply filled with its colour. Modifier types:
 | `stroke` | outlines the shape; colour defaults to the layer colour                          |
 | `effect` | one effect (blur, shadow, glow, outline, tint …); stack several for a chain      |
 | `mask`   | turns the layer into a mask over the layers below (see Masks)                    |
+| `round`  | rounds every corner of the outline (radius as % of half the shorter side); strokes have sharp joins unless this is applied |
 | `deform` | trapezoid / skew warp: top and bottom width %, top offset % (a rectangle with a narrow top is a trapezoid; top 0 is a triangle) |
 | `edges`  | subdivides every straight edge and bends the new points in or out; smooth curves optional (a pentagon with one inward subdivision is a star; outward + smooth gives petals) |
 
-Geometry modifiers (`deform`, `edges`) apply in order before painting;
+Geometry modifiers (`round`, `deform`, `edges`) apply in order before painting;
 several can be stacked. `createModifier(type, init)`, `createEffectModifier()`
 and `createMaskModifier()` build them; `addModifier()`, `updateModifier()`,
 `removeModifier()` and `moveModifier()` edit a layer's stack. Documents saved
 by earlier versions (with `fill`, `stroke`, `effects`, `mask` fields, or the
 removed `star`/`quad` shapes) are converted on load.
+
+### Variables and bindings
+
+The Variables panel (desktop: below the layer settings; mobile: its own tab)
+lets a document declare numeric **variables** with a range and a slider, and
+lets any layer **bind** a property to a formula over them:
+
+```ts
+let doc = createDocument({ variables: [createVariable({ name: 'level', value: 0.6, min: 0, max: 1 })] });
+const water = setBinding(
+  setBinding(createShapeLayer({ name: 'Water', width: 60, height: 60, x: 256, y: 356 }), createBinding('height', 'level * 60')),
+  createBinding('y', '386 - level * 30'),
+);
+const hourHand = setBinding(createGroupLayer({ name: 'Hour hand', x: 256, y: 256, children: [bar] }), createBinding('rotation', 'hours12 * 30 + minutes / 2'));
+```
+
+Bindable targets: `x`, `y`, `rotation`, `opacity`, `visible`, shape `width`
+and `height`, group `scale`, shape `params.<key>`, and every numeric field or
+`enabled` flag of a modifier (`modifiers.<id>.<field>`), so a mask, an effect
+strength or a deform can be animated too. Bindings are evaluated when
+rendering; the stored document keeps the unbound values.
+
+Formulas use a small safe language: `+ - * / % ^`, comparisons and `&& || !`
+(booleans are 1/0), `cond ? a : b`, and functions `abs floor ceil round trunc
+sqrt pow min max clamp lerp mod sin cos tan asin acos atan atan2 sign step
+smoothstep wrap`, constants `pi`, `e`. Time built-ins are always available:
+`hours`, `hours12`, `minutes`, `seconds`, `time` (fractional seconds since
+midnight), `dayFraction`, `weekday`, `date`, `month`, `year`, `t` (seconds
+since the document opened) and `now`. When a binding references one of them
+the editor redraws the canvas several times a second, so a clock ticks.
+
+A host app drives the picture with `editor.setVariables({ level: 0.4 })` (or
+`renderDocument(doc, { variables: { level: 0.4 }, time })` headlessly);
+overrides win over the document's slider values. Examples: a jar filling with
+water (a rectangle's height bound to `level`, clipped by a mask), a clock (hand
+groups' rotation bound to time), or a pile of apples (each apple's `visible`
+bound to `count >= n`). The demo's "Clock & gauge" sample shows the first two.
+Hide the panel with `features.variables: false`.
 
 ### Masks
 
@@ -196,7 +235,7 @@ A small set of parametric shapes covers what used to be many fixed ones:
 
 | shape        | parameters                                   | covers                                         |
 | ------------ | -------------------------------------------- | ---------------------------------------------- |
-| Polygon      | sides (3–24), corner radius                  | rectangle, rounded rectangle, triangle, pentagon, hexagon, octagon …; with a `deform` modifier: trapezoid, parallelogram, right triangle; with an `edges` modifier: stars, gears, flowers |
+| Polygon      | sides (3–24)                                 | rectangle, rounded rectangle, triangle, pentagon, hexagon, octagon …; with a `deform` modifier: trapezoid, parallelogram, right triangle; with an `edges` modifier: stars, gears, flowers |
 | Ellipse / arc| sweep angle, start angle, hole               | circle, ellipse, ring, pie, semicircle, annular sector |
 | Gear         | teeth, tooth depth, hole                     |                                                |
 | Arrow        | head length, shaft thickness, corner radius  | arrow, arrowhead                               |
@@ -347,6 +386,7 @@ Methods (all changes are undoable):
   `updateSelected(patch)`, `updateLayer(id, patch)`, `nudgeSelection(dx, dy)`, `undo()`, `redo()`
 - View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`
 - Theme & features: `setTheme(name)`, `setColors(tokens)`, `clearColors()`, `setFeatures(partial)`, `features`
+- Variables: `setVariables(values)`, `clearVariables()`, `env()`, `resolvedDocument()`
 - Export: `exportSvg()`, `exportPng({ scale | width, background })`, `downloadSvg()`, `downloadPng()`,
   `downloadJson()`, `openJsonFile()`
 - Events: `on('change' | 'selectionchange' | 'viewchange', fn)` returns an unsubscribe function

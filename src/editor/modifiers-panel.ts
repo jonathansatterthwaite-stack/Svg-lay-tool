@@ -64,7 +64,7 @@ export class ModifiersPanel {
     const isShape = layer.type === 'shape';
     if (isShape) out.push('fill');
     if (isShape && f.strokes) out.push('stroke');
-    if (isShape) out.push('deform', 'edges');
+    if (isShape) out.push('round', 'deform', 'edges');
     if (f.effects !== false && allowedEffectTypes(f).length) out.push('effect');
     if (f.masks) out.push('mask');
     return out;
@@ -209,6 +209,11 @@ export class ModifiersPanel {
         }
         return out;
       }
+      case 'round':
+        return [
+          row('Radius %', slider(m.radius, (v, c) => patch({ radius: v } as Partial<Modifier>, c), { min: 0, max: 100, step: 1 })),
+          el('div', { class: 'slt-hint' }, ['Percent of half the shorter side. Strokes follow the rounded outline; without this modifier corners stay sharp.']),
+        ];
       case 'deform':
         return [
           row('Top width %', slider(m.top, (v, c) => patch({ top: v } as Partial<Modifier>, c), { min: 0, max: 200, step: 1 })),

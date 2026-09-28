@@ -1,5 +1,8 @@
 import {
+  createBinding,
   createDocument,
+  createVariable,
+  setBinding,
   createEffect,
   createEffectModifier,
   createGroupLayer,
@@ -140,4 +143,51 @@ export function sampleDocument(): SvgDocument {
     background: null,
     layers: [backplate, stripes, ring, star, bolt, blurRegion, lensRim],
   });
+}
+
+
+/** A working clock: hands are groups whose rotation is bound to the time built-ins. */
+export function sampleClock(): SvgDocument {
+  const face = createShapeLayer({ name: 'Face', shape: 'ellipse', x: 256, y: 256, width: 440, height: 440, color: '#f4f1ea',
+    modifiers: [createModifier('stroke', { color: '#2b2f3a', width: 12 }), createEffectModifier('shadow', { dx: 0, dy: 8, blur: 10, opacity: 0.35 })] });
+  const ticks = createGroupLayer({
+    name: 'Ticks',
+    x: 256,
+    y: 256,
+    children: Array.from({ length: 12 }, (_, i) =>
+      createShapeLayer({ name: `Tick ${i + 1}`, shape: 'polygon', params: { sides: 4 }, x: 0, y: -180, width: i % 3 === 0 ? 10 : 5, height: i % 3 === 0 ? 34 : 18, color: '#2b2f3a',
+        // each tick is rotated about the clock centre: the group origin
+        modifiers: [] }),
+    ).map((tick, i) => {
+      // place around the dial by rotating about the group's origin
+      const a = (i * 30 * Math.PI) / 180;
+      return { ...tick, x: Math.sin(a) * 180, y: -Math.cos(a) * 180, rotation: i * 30 };
+    }),
+  });
+  const hand = (name: string, length: number, width: number, color: string, expr: string) =>
+    setBinding(
+      createGroupLayer({
+        name,
+        x: 256,
+        y: 256,
+        children: [createShapeLayer({ name: `${name} bar`, shape: 'polygon', params: { sides: 4 }, x: 0, y: -length / 2 + 14, width, height: length, color,
+          modifiers: [createModifier('round', { radius: 100 })] })],
+      }),
+      createBinding('rotation', expr),
+    );
+  const hourHand = hand('Hour hand', 130, 14, '#2b2f3a', 'hours12 * 30 + minutes / 2');
+  const minuteHand = hand('Minute hand', 180, 10, '#2b2f3a', 'minutes * 6 + seconds / 10');
+  const secondHand = hand('Second hand', 200, 4, '#e0402a', 'mod(time, 60) * 6');
+  const pivot = createShapeLayer({ name: 'Pivot', shape: 'ellipse', x: 256, y: 256, width: 22, height: 22, color: '#e0402a',
+    modifiers: [createModifier('stroke', { color: '#f4f1ea', width: 3 })] });
+  // A "water level" gauge on the face: a rectangle whose height follows a variable, clipped by a rounded window.
+  const level = createVariable({ name: 'level', value: 0.6, min: 0, max: 1, step: 0.01 });
+  const water = setBinding(
+    setBinding(createShapeLayer({ name: 'Water', shape: 'polygon', params: { sides: 4 }, x: 256, y: 356, width: 60, height: 40, color: '#4da3ff' }), createBinding('height', 'level * 60')),
+    createBinding('y', '386 - level * 30'),
+  );
+  const window = createShapeLayer({ name: 'Gauge window', shape: 'polygon', params: { sides: 4 }, x: 256, y: 356, width: 60, height: 60, color: '#ffffff',
+    modifiers: [createModifier('round', { radius: 40 }), createMaskModifier({ mode: 'clip' })] });
+  const gauge = createGroupLayer({ name: 'Gauge', x: 0, y: 0, children: [water, window] });
+  return createDocument({ width: 512, height: 512, background: '#dfe3ea', layers: [face, ticks, gauge, hourHand, minuteHand, secondHand, pivot], variables: [level] });
 }

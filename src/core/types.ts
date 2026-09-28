@@ -148,6 +148,11 @@ export type Modifier = ModifierBase &
         skew: number;
       }
     | {
+        /** Round every corner of the outline; radius is % of half the shorter box side. */
+        type: 'round';
+        radius: number;
+      }
+    | {
         /**
          * Subdivide every straight edge of the outline and push the new points
          * inwards (negative) or outwards (positive), as % of half the edge length.
@@ -177,6 +182,28 @@ export interface LayerBase {
   rotation: number;
   /** Stacked modifiers: paint, effects, mask and geometry changes. */
   modifiers: Modifier[];
+  /** Properties driven by expressions over the document's variables (see bindings.ts). */
+  bindings?: Binding[];
+}
+
+/** A user-editable number the document exposes (a slider in the editor, an input for a host app). */
+export interface Variable {
+  id: string;
+  /** Identifier used in expressions: letters, digits and underscores. */
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
+/** A layer property driven by an expression, e.g. `{ target: 'rotation', expression: 'hours12 * 30 + minutes / 2' }`. */
+export interface Binding {
+  id: string;
+  /** Property path: `x`, `rotation`, `visible`, `params.sides`, `modifiers.<id>.<field>` … */
+  target: string;
+  expression: string;
+  enabled: boolean;
 }
 
 /** 2×2 linear map (no translation): [a c; b d]. */
@@ -232,4 +259,6 @@ export interface SvgDocument {
   background: string | null;
   /** Bottom first. */
   layers: Layer[];
+  /** Variables available to bindings. */
+  variables?: Variable[];
 }

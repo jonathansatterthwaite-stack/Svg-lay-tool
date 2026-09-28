@@ -17,6 +17,7 @@ import type { SvgLayEditor } from './editor';
 import { button, checkbox, colorField, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
 import { ModifiersPanel } from './modifiers-panel';
+import { VariablesPanel } from './variables-panel';
 
 export type PropertiesMode = 'auto' | 'document' | 'layer';
 
@@ -26,10 +27,12 @@ export class PropertiesPanel {
   mode: PropertiesMode = 'auto';
   /** In `auto` mode the modifiers stack is shown under the layer settings (desktop). */
   private modifiers: ModifiersPanel;
+  private variables: VariablesPanel;
 
   constructor(private editor: SvgLayEditor) {
     this.el = el('div', { class: 'slt-props' });
     this.modifiers = new ModifiersPanel(editor);
+    this.variables = new VariablesPanel(editor);
   }
 
   render(): void {
@@ -52,6 +55,10 @@ export class PropertiesPanel {
     if (this.mode === 'auto' && layers.length === 1) {
       this.modifiers.render();
       this.el.appendChild(this.modifiers.el);
+    }
+    if (this.mode === 'auto' && this.editor.features.variables) {
+      this.variables.render();
+      this.el.appendChild(this.variables.el);
     }
   }
 
@@ -93,9 +100,9 @@ export class PropertiesPanel {
     this.el.appendChild(section('Canvas', canvasChildren));
     this.el.appendChild(
       section('Shortcuts', [
-        el('div', { class: 'slt-hint' }, ['Drag to move · handles to resize (Shift keeps ratio, Alt from centre) · top handle rotates (Shift snaps 15°)']),
+        el('div', { class: 'slt-hint' }, ['Hold a layer to pick it up · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°)']),
         el('div', { class: 'slt-hint' }, [`${f.groups ? 'Ctrl+G group · Ctrl+Shift+G ungroup · ' : ''}Ctrl+D duplicate · [ ] reorder · Del delete · Ctrl+Z / Ctrl+Y undo/redo`]),
-        el('div', { class: 'slt-hint' }, ['Double-click a group to select a layer inside it. Shift+click adds to the selection.']),
+        el('div', { class: 'slt-hint' }, ['Select layers in the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.']),
       ]),
     );
   }
@@ -215,6 +222,16 @@ export class PropertiesPanel {
         checkbox('Locked', layer.locked, (c) => patch({ locked: c })),
       ]),
     );
+    const bound = (layer.bindings ?? []).filter((b) => b.enabled);
+    if (bound.length) {
+      transformChildren.push(
+        el('div', { class: 'slt-hint slt-bound-hint' }, [
+          'ƒ Driven by formulas: ',
+          bound.map((b) => `${b.target} = ${b.expression}`).join(' · '),
+          '. Edits to those properties are overridden while the binding is enabled.',
+        ]),
+      );
+    }
     this.el.appendChild(section(layer.type === 'group' ? 'Group' : 'Layer', transformChildren));
 
     // Shape

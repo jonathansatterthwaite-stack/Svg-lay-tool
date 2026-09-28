@@ -14,7 +14,7 @@ import {
 import { EFFECT_DEFS } from './effects';
 import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Effect, Fill, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument } from './types';
+import type { Binding, Effect, Fill, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -24,6 +24,7 @@ export interface CreateDocumentOptions {
   height?: number;
   background?: string | null;
   layers?: Layer[];
+  variables?: Variable[];
 }
 
 export function createDocument(opts: CreateDocumentOptions = {}): SvgDocument {
@@ -33,6 +34,7 @@ export function createDocument(opts: CreateDocumentOptions = {}): SvgDocument {
     height: opts.height ?? 512,
     background: opts.background === undefined ? null : opts.background,
     layers: opts.layers ?? [],
+    variables: opts.variables ?? [],
   };
 }
 
@@ -114,6 +116,26 @@ export function updateModifier(layer: Layer, id: string, patch: Partial<Modifier
 
 export function removeModifier(layer: Layer, id: string): Layer {
   return { ...layer, modifiers: (layer.modifiers ?? []).filter((m) => m.id !== id) };
+}
+
+export function setBinding(layer: Layer, binding: Binding): Layer {
+  const rest = (layer.bindings ?? []).filter((b) => b.id !== binding.id && b.target !== binding.target);
+  return { ...layer, bindings: [...rest, binding] };
+}
+
+export function removeBinding(layer: Layer, id: string): Layer {
+  const bindings = (layer.bindings ?? []).filter((b) => b.id !== id);
+  return bindings.length ? { ...layer, bindings } : { ...layer, bindings: undefined };
+}
+
+export function upsertVariable(doc: SvgDocument, variable: Variable): SvgDocument {
+  const vars = doc.variables ?? [];
+  const i = vars.findIndex((v) => v.id === variable.id);
+  return { ...doc, variables: i < 0 ? [...vars, variable] : vars.map((v, j) => (j === i ? variable : v)) };
+}
+
+export function removeVariable(doc: SvgDocument, id: string): SvgDocument {
+  return { ...doc, variables: (doc.variables ?? []).filter((v) => v.id !== id) };
 }
 
 export function moveModifier(layer: Layer, id: string, delta: number): Layer {
@@ -337,6 +359,7 @@ export function cloneLayer(layer: Layer): Layer {
     ...layer,
     id: createId(layer.type === 'group' ? 'g' : 'l'),
     modifiers: (layer.modifiers ?? []).map(cloneModifier),
+    ...(layer.bindings ? { bindings: layer.bindings.map((b) => ({ ...b, id: createId('b') })) } : {}),
   };
   if (base.type === 'group') {
     return { ...base, stretch: { ...(base.stretch ?? IDENTITY2) }, children: base.children.map(cloneLayer) };
@@ -637,6 +660,39 @@ export function normalizeDocument(input: unknown): SvgDocument {
     height: Math.max(1, num(raw.height, 512)),
     background: typeof raw.background === 'string' ? raw.background : null,
     layers,
+    variables: Array.isArray(raw.variables) ? raw.variables.map(normalizeVariable).filter((v): v is Variable => !!v) : [],
+  };
+}
+
+const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export function normalizeVariable(input: unknown): Variable | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const name = typeof raw.name === 'string' && IDENT.test(raw.name) ? raw.name : null;
+  if (!name) return null;
+  const min = num(raw.min, 0);
+  const max = Math.max(min, num(raw.max, 1));
+  return {
+    id: typeof raw.id === 'string' ? raw.id : createId('v'),
+    name,
+    value: Math.min(max, Math.max(min, num(raw.value, min))),
+    min,
+    max,
+    step: Math.max(0, num(raw.step, 0.01)) || 0.01,
+  };
+}
+
+function normalizeBinding(input: unknown): Binding | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  if (typeof raw.target !== 'string' || typeof raw.expression !== 'string') return null;
+  return {
+    id: typeof raw.id === 'string' ? raw.id : createId('b'),
+    target: raw.target,
+    expression: raw.expression,
+    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
   };
 }
 
@@ -684,6 +740,7 @@ function normalizeLayer(input: unknown): Layer | null {
     y: num(raw.y, 0),
     rotation: num(raw.rotation, 0),
     modifiers,
+    ...(Array.isArray(raw.bindings) ? { bindings: raw.bindings.map(normalizeBinding).filter((b): b is Binding => !!b) } : {}),
   };
   if (raw.type === 'group') {
     const children = Array.isArray(raw.children)
@@ -701,6 +758,11 @@ function normalizeLayer(input: unknown): Layer | null {
   const def = getShape(resolved.id);
   const params: Record<string, number> = { ...defaultShapeParams(def), ...resolved.params };
   const aliasMods = (resolved.modifiers ?? []).map(normalizeModifier).filter((m): m is Modifier => !!m);
+  // Corner radius used to be a shape parameter; it is a `round` modifier now.
+  if (typeof rawParams.radius === 'number' && rawParams.radius > 0 && !def.params?.some((p) => p.key === 'radius')) {
+    aliasMods.push(createModifier('round', { radius: rawParams.radius }));
+    delete params.radius;
+  }
   base.modifiers = [...aliasMods, ...base.modifiers];
   return {
     ...base,
@@ -767,6 +829,8 @@ export function normalizeModifier(input: unknown): Modifier | null {
       };
     case 'deform':
       return { ...base, type: 'deform', top: num(raw.top, 60), bottom: num(raw.bottom, 100), skew: num(raw.skew, 0) };
+    case 'round':
+      return { ...base, type: 'round', radius: Math.max(0, num(raw.radius, 20)) };
     case 'edges':
       return {
         ...base,

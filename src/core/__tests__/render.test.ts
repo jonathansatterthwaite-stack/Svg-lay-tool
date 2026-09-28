@@ -257,6 +257,21 @@ describe('modifiers', () => {
     expect(ratio).toBeLessThan(0.6);
   });
 
+  it('round modifier rounds corners with arcs; strokes otherwise keep sharp joins', () => {
+    const rect = createShapeLayer({ width: 100, height: 40, modifiers: [createModifier('round', { radius: 50 }), createModifier('stroke', { color: '#000', width: 2 })] });
+    const tree = renderDocument(insertLayer(createDocument(), rect), { interactive: true });
+    const path = find(tree, (n) => n.attrs['data-layer-id'] === rect.id)[0];
+    expect(path.attrs.d as string).toContain('A10 10'); // 50% of half the short side
+    expect(((path.attrs.d as string).match(/A/g) ?? []).length).toBe(4);
+    expect(path.attrs['stroke-linejoin']).toBe('miter');
+    // rounding after edges gives a star with soft tips
+    const star = createShapeLayer({ shape: 'star', width: 200, height: 200, modifiers: [createModifier('round', { radius: 10 })] });
+    const st = renderDocument(insertLayer(createDocument(), star), { interactive: true });
+    const d = find(st, (n) => n.attrs['data-layer-id'] === star.id)[0].attrs.d as string;
+    expect(star.modifiers.map((m) => m.type)).toEqual(['edges', 'round']);
+    expect((d.match(/A/g) ?? []).length).toBe(10);
+  });
+
   it('smooth edges emit quadratic curves', () => {
     const wavy = createShapeLayer({ params: { sides: 6 }, modifiers: [createModifier('edges', { subdivisions: 1, bend: 40, smooth: true })] });
     const tree = renderDocument(insertLayer(createDocument(), wavy), { interactive: true });

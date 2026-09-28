@@ -1,6 +1,6 @@
 import { createEffect } from './effects';
 import { createId } from './ids';
-import { flattenPath, polygonCentroid, polygonsToPath, polygonsToSmoothPath, type Polygon } from './path';
+import { flattenPath, polygonCentroid, polygonsToPath, polygonsToRoundedPath, polygonsToSmoothPath, type Polygon } from './path';
 import type { Effect, EffectType, Fill, Layer, MaskSettings, Modifier, ModifierType, Point, Stroke } from './types';
 
 export interface ModifierDefinition {
@@ -18,6 +18,7 @@ export const MODIFIER_DEFS: Record<ModifierType, ModifierDefinition> = {
   fill: { type: 'fill', label: 'Fill', shapeOnly: true, single: true, geometry: false },
   stroke: { type: 'stroke', label: 'Stroke', shapeOnly: true, single: true, geometry: false },
   deform: { type: 'deform', label: 'Deform', shapeOnly: true, single: false, geometry: true },
+  round: { type: 'round', label: 'Round corners', shapeOnly: true, single: false, geometry: true },
   edges: { type: 'edges', label: 'Edges', shapeOnly: true, single: false, geometry: true },
   effect: { type: 'effect', label: 'Effect', shapeOnly: false, single: false, geometry: false },
   mask: { type: 'mask', label: 'Mask', shapeOnly: false, single: true, geometry: false },
@@ -46,6 +47,9 @@ export function createModifier<T extends ModifierType>(type: T, init: ModifierIn
       break;
     case 'deform':
       m = { ...base, type: 'deform', top: 60, bottom: 100, skew: 0 };
+      break;
+    case 'round':
+      m = { ...base, type: 'round', radius: 20 };
       break;
     case 'edges':
       m = { ...base, type: 'edges', subdivisions: 1, bend: -40, smooth: false };
@@ -126,16 +130,25 @@ export function applyGeometryModifiers(d: string, modifiers: Modifier[], width: 
   const geo = modifiers.filter((m) => m.enabled && MODIFIER_DEFS[m.type].geometry);
   if (geo.length === 0) return d;
   const tolerance = Math.max(0.5, Math.max(width, height) / 96);
+  // Each step works on the flattened outline of the previous result, so
+  // curves produced by one modifier (rounded corners, smooth edges) can be
+  // reshaped by the next.
   let polys = flattenPath(d, tolerance);
-  let smooth = false;
+  let out = d;
   for (const m of geo) {
-    if (m.type === 'deform') polys = polys.map((p) => p.map((pt) => deformPoint(pt, width, height, m.top, m.bottom, m.skew)));
-    else if (m.type === 'edges') {
+    if (m.type === 'deform') {
+      polys = polys.map((p) => p.map((pt) => deformPoint(pt, width, height, m.top, m.bottom, m.skew)));
+      out = polygonsToPath(polys);
+    } else if (m.type === 'edges') {
       polys = polys.map((p) => bendEdges(p, m.subdivisions, m.bend));
-      smooth = m.smooth;
+      out = m.smooth ? polygonsToSmoothPath(polys) : polygonsToPath(polys);
+      if (m.smooth) polys = flattenPath(out, tolerance);
+    } else if (m.type === 'round') {
+      out = polygonsToRoundedPath(polys, (Math.min(width, height) / 2) * (m.radius / 100));
+      polys = flattenPath(out, tolerance);
     }
   }
-  return smooth ? polygonsToSmoothPath(polys) : polygonsToPath(polys);
+  return out;
 }
 
 function deformPoint(p: Point, w: number, h: number, top: number, bottom: number, skew: number): Point {

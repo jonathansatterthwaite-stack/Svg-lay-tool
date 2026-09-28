@@ -1,5 +1,5 @@
 import { SvgLayEditor, defineSvgLayEditor } from '../src';
-import { sampleDocument } from './sample';
+import { sampleClock, sampleDocument } from './sample';
 
 defineSvgLayEditor();
 
@@ -66,10 +66,13 @@ if (saved && new URLSearchParams(location.search).get('fresh') === null) {
   }
 }
 
-document.getElementById('reset')!.addEventListener('click', () => {
+const sampleSel = document.getElementById('sample') as HTMLSelectElement;
+const loadSample = () => {
   localStorage.removeItem('slt-demo-doc');
-  editor.loadDocument(sampleDocument());
-});
+  editor.loadDocument(sampleSel.value === 'clock' ? sampleClock() : sampleDocument());
+};
+document.getElementById('reset')!.addEventListener('click', loadSample);
+sampleSel.addEventListener('change', loadSample);
 
 
 // Expose for poking around in the console.

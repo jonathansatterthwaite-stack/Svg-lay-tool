@@ -54,6 +54,8 @@ export interface EditorFeatures {
   highlightSelection: boolean;
   /** Allow corner handles to stretch groups non-uniformly (edge handles always can). */
   groupStretch: boolean;
+  /** Show the Variables panel / tab (document variables and property bindings). */
+  variables: boolean;
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -75,6 +77,7 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   maskPreview: true,
   highlightSelection: true,
   groupStretch: true,
+  variables: true,
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

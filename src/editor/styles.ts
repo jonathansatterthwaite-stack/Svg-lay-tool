@@ -271,6 +271,18 @@ input.slt-gray-range { background: linear-gradient(90deg, #000, #fff); border-ra
 .slt-effect[data-disabled] { opacity: 0.6; }
 .slt-modifier[data-type="mask"] { border-color: var(--_slt-accent); }
 .slt-modifiers-empty { padding: 8px 0; }
+.slt-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px 6px; }
+.slt-var-name { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 600; }
+.slt-time-list { display: flex; flex-direction: column; gap: 2px; margin: 4px 0; }
+.slt-time-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--_slt-muted); }
+.slt-time-row code { color: var(--_slt-text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 78px; }
+.slt-time-row .slt-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slt-time-value { font-variant-numeric: tabular-nums; color: var(--_slt-text); }
+.slt-fx { color: var(--_slt-accent); font-weight: 700; font-style: italic; width: 14px; flex: none; }
+.slt-binding-expr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.slt-binding-result { display: block; font-size: 11px; color: var(--_slt-muted); padding: 0 0 2px 20px; font-variant-numeric: tabular-nums; }
+.slt-binding-error { color: var(--_slt-danger); }
+.slt-bound-hint { color: var(--_slt-accent); }
 .slt-effect-head { display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
 .slt-effect-head .slt-grow { flex: 1; font-weight: 600; }
 .slt-effect .slt-row > label { flex-basis: 64px; }

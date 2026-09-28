@@ -111,56 +111,12 @@ function fitToBox(pts: Pt[], w: number, h: number): Pt[] {
   return pts.map(([x, y]) => [((x - minX) / sw - 0.5) * w, ((y - minY) / sh - 0.5) * h]);
 }
 
-/**
- * Path for a closed polygon with rounded corners. `radius` is the distance
- * cut back along each edge; it is clamped to half of the shorter adjacent edge.
- */
-function roundedPoly(points: Pt[], radius: number): string {
-  if (radius <= 0.01 || points.length < 3) return poly(points);
-  const n = points.length;
-  const segs: string[] = [];
-  for (let i = 0; i < n; i++) {
-    const prev = points[(i - 1 + n) % n];
-    const cur = points[i];
-    const next = points[(i + 1) % n];
-    const d1 = dist(prev, cur);
-    const d2 = dist(cur, next);
-    const cut = Math.min(radius, d1 / 2, d2 / 2);
-    if (cut < 0.01 || d1 === 0 || d2 === 0) {
-      segs.push(`${i === 0 ? 'M' : 'L'}${fmt(cur[0])} ${fmt(cur[1])}`);
-      continue;
-    }
-    const p1: Pt = [cur[0] + ((prev[0] - cur[0]) / d1) * cut, cur[1] + ((prev[1] - cur[1]) / d1) * cut];
-    const p2: Pt = [cur[0] + ((next[0] - cur[0]) / d2) * cut, cur[1] + ((next[1] - cur[1]) / d2) * cut];
-    // Interior angle → circular arc radius that meets both edges tangentially.
-    const v1 = [prev[0] - cur[0], prev[1] - cur[1]];
-    const v2 = [next[0] - cur[0], next[1] - cur[1]];
-    const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (d1 * d2);
-    const theta = Math.acos(Math.max(-1, Math.min(1, cos)));
-    const r = cut * Math.tan(theta / 2);
-    const cross = v1[0] * v2[1] - v1[1] * v2[0];
-    const sweep = cross > 0 ? 0 : 1;
-    segs.push(`${i === 0 ? 'M' : 'L'}${fmt(p1[0])} ${fmt(p1[1])}`);
-    if (Number.isFinite(r) && r > 0.01) segs.push(`A${fmt(r)} ${fmt(r)} 0 0 ${sweep} ${fmt(p2[0])} ${fmt(p2[1])}`);
-    else segs.push(`Q${fmt(cur[0])} ${fmt(cur[1])} ${fmt(p2[0])} ${fmt(p2[1])}`);
-  }
-  return segs.join(' ') + ' Z';
-}
-
-function dist(a: Pt, b: Pt): number {
-  return Math.hypot(a[0] - b[0], a[1] - b[1]);
-}
-
 function arcPoint(rx: number, ry: number, deg: number): Pt {
   const a = ((deg - 90) * Math.PI) / 180;
   return [rx * Math.cos(a), ry * Math.sin(a)];
 }
 
-const RADIUS_PARAM: ShapeParam = { key: 'radius', label: 'Corner radius %', min: 0, max: 100, step: 1, default: 0 };
 
-function cornerRadius(w: number, h: number, pct: number): number {
-  return (Math.min(w, h) / 2) * (pct / 100);
-}
 
 function ellipsePath(rx: number, ry: number, reverse = false): string {
   const sweep = reverse ? 0 : 1;
@@ -189,8 +145,8 @@ const builtin: ShapeDefinition[] = [
     id: 'polygon',
     name: 'Polygon',
     category: 'Basic',
-    params: [{ key: 'sides', label: 'Sides', min: 3, max: 24, step: 1, default: 4 }, RADIUS_PARAM],
-    path: (w, h, p) => roundedPoly(regularPolygonPoints(w, h, p.sides), cornerRadius(w, h, p.radius)),
+    params: [{ key: 'sides', label: 'Sides', min: 3, max: 24, step: 1, default: 4 }],
+    path: (w, h, p) => poly(regularPolygonPoints(w, h, p.sides)),
   },
   {
     id: 'ellipse',
@@ -263,7 +219,6 @@ const builtin: ShapeDefinition[] = [
     params: [
       { key: 'head', label: 'Head length %', min: 5, max: 100, step: 1, default: 40 },
       { key: 'shaft', label: 'Shaft thickness %', min: 0, max: 100, step: 1, default: 40 },
-      RADIUS_PARAM,
     ],
     path: (w, h, p) => {
       const hw = w / 2;
@@ -286,14 +241,14 @@ const builtin: ShapeDefinition[] = [
               [x1, s],
               [-hw, s],
             ];
-      return roundedPoly(pts, cornerRadius(w, h, p.radius));
+      return poly(pts);
     },
   },
   {
     id: 'chevron',
     name: 'Chevron',
     category: 'Symbols',
-    params: [{ key: 'thickness', label: 'Thickness %', min: 5, max: 100, step: 1, default: 40 }, RADIUS_PARAM],
+    params: [{ key: 'thickness', label: 'Thickness %', min: 5, max: 100, step: 1, default: 40 }],
     path: (w, h, p) => {
       const hw = w / 2;
       const hh = h / 2;
@@ -313,21 +268,20 @@ const builtin: ShapeDefinition[] = [
               [-hw, hh],
               [hw - d, 0],
             ];
-      return roundedPoly(pts, cornerRadius(w, h, p.radius));
+      return poly(pts);
     },
   },
   {
     id: 'plus',
     name: 'Plus / cross',
     category: 'Symbols',
-    params: [{ key: 'thickness', label: 'Arm thickness %', min: 5, max: 100, step: 1, default: 30 }, RADIUS_PARAM],
+    params: [{ key: 'thickness', label: 'Arm thickness %', min: 5, max: 100, step: 1, default: 30 }],
     path: (w, h, p) => {
       const hw = w / 2;
       const hh = h / 2;
       const ax = (w * (p.thickness / 100)) / 2;
       const ay = (h * (p.thickness / 100)) / 2;
-      return roundedPoly(
-        [
+      return poly([
           [-ax, -hh],
           [ax, -hh],
           [ax, -ay],
@@ -341,7 +295,6 @@ const builtin: ShapeDefinition[] = [
           [-hw, -ay],
           [-ax, -ay],
         ],
-        cornerRadius(w, h, p.radius),
       );
     },
   },
@@ -377,10 +330,8 @@ const builtin: ShapeDefinition[] = [
     id: 'lightning',
     name: 'Lightning',
     category: 'Symbols',
-    params: [RADIUS_PARAM],
-    path: (w, h, p) =>
-      roundedPoly(
-        norm(w, h, [
+    path: (w, h) =>
+      poly(norm(w, h, [
           [0.6, 0],
           [0.15, 0.58],
           [0.45, 0.58],
@@ -389,7 +340,6 @@ const builtin: ShapeDefinition[] = [
           [0.55, 0.4],
           [0.75, 0],
         ]),
-        cornerRadius(w, h, p.radius),
       ),
   },
   {
@@ -441,7 +391,7 @@ export const SHAPE_ALIASES: Record<string, ShapeAlias> = {
   rect: { id: 'polygon', params: { sides: 4 } },
   rectangle: { id: 'polygon', params: { sides: 4 } },
   square: { id: 'polygon', params: { sides: 4 } },
-  'rounded-rect': { id: 'polygon', params: { sides: 4, radius: 30 } },
+  'rounded-rect': { id: 'polygon', params: { sides: 4 }, modifiers: [{ type: 'round', radius: 30 }] },
   triangle: { id: 'polygon', params: { sides: 3 } },
   pentagon: { id: 'polygon', params: { sides: 5 } },
   hexagon: { id: 'polygon', params: { sides: 6 } },
@@ -480,7 +430,7 @@ export function resolveShapeAlias(
   }
   // Old ring/rounded-rect parameters were expressed differently.
   if (shapeId === 'ring' && typeof params.thickness === 'number') out.hole = 100 - params.thickness;
-  if (shapeId === 'rounded-rect' && typeof params.radius === 'number') out.radius = params.radius * 2;
+  if (shapeId === 'rounded-rect' && typeof params.radius === 'number' && modifiers) modifiers[0].radius = params.radius * 2;
   if (shapeId === 'pie') {
     if (typeof params.sweep === 'number') out.sweep = params.sweep;
     if (typeof params.start === 'number') out.start = params.start;

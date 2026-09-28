@@ -27,6 +27,10 @@ import {
   updateLayers,
   walkLayers,
   getShape,
+  documentUsesTime,
+  documentEnv,
+  resolveDocument,
+  type Env,
   type Layer,
   type PngExportOptions,
   type RenderOptions,
@@ -41,6 +45,7 @@ import { LayersPanel } from './layers-panel';
 import { LayerStrip } from './layer-strip';
 import { LibraryPanel } from './library-panel';
 import { ModifiersPanel } from './modifiers-panel';
+import { VariablesPanel } from './variables-panel';
 import { PropertiesPanel } from './properties-panel';
 import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, type ThemeName } from './features';
 import { EDITOR_STYLES } from './styles';
@@ -79,7 +84,7 @@ export interface EditorOptions {
   onSelectionChange?: (ids: string[]) => void;
 }
 
-export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer' | 'modifiers';
+export type MobileTab = 'shapes' | 'layers' | 'canvas' | 'layer' | 'modifiers' | 'variables';
 
 export interface ViewState {
   zoom: number;
@@ -129,6 +134,10 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private strip: LayerStrip | null = null;
   private propsPanel: PropertiesPanel | null = null;
   private modifiersPanel: ModifiersPanel | null = null;
+  private variablesPanel: VariablesPanel | null = null;
+  private animTimer: ReturnType<typeof setInterval> | null = null;
+  /** Variable values supplied by the host app; they override the document's own. */
+  variableOverrides: Env = {};
   private disposers: (() => void)[] = [];
   private destroyed = false;
 
@@ -238,6 +247,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
         { id: 'canvas', label: 'Canvas', ic: 'fit', show: !!this.propsPanel },
         { id: 'layer', label: 'Layer', ic: 'settings', show: !!this.propsPanel },
         { id: 'modifiers', label: 'Modifiers', ic: 'modifiers', show: !!this.propsPanel },
+        { id: 'variables', label: 'Variables', ic: 'variables', show: !!this.propsPanel && this.features.variables },
       ];
       for (const t of tabs) {
         if (!t.show) continue;
@@ -276,6 +286,10 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
         this.modifiersPanel ??= new ModifiersPanel(this);
         this.modifiersPanel.render();
         panel = this.modifiersPanel.el;
+      } else if (tab === 'variables') {
+        this.variablesPanel ??= new VariablesPanel(this);
+        this.variablesPanel.render();
+        panel = this.variablesPanel.el;
       } else {
         panel = this.propsPanel?.el;
         if (this.propsPanel) {
@@ -622,7 +636,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   /** Renderer options that enforce the current colour mode (used for canvas and export). */
   renderOptions(): RenderOptions {
     const f = this.features;
-    return f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
+    const out: RenderOptions = f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
+    if (Object.keys(this.variableOverrides).length) out.variables = this.variableOverrides;
+    return out;
   }
 
   /** Toggle the exact-output preview on the canvas. */
@@ -668,7 +684,49 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.toolbar?.render();
     this.layersPanel?.render();
     this.propsPanel?.render();
-    if (this.layout === 'mobile' && this.activeTab === 'modifiers' && this.sheetOpen) this.modifiersPanel?.render();
+    if (this.layout === 'mobile' && this.sheetOpen) {
+      if (this.activeTab === 'modifiers') this.modifiersPanel?.render();
+      if (this.activeTab === 'variables') this.variablesPanel?.render();
+    }
+    this.syncAnimation();
+  }
+
+  // -------------------------------------------------------------------------
+  // Variables
+
+  /** Feed live values for variables (by name) from the host app; the canvas updates immediately. */
+  setVariables(values: Env): void {
+    this.variableOverrides = { ...this.variableOverrides, ...values };
+    this.canvas.render();
+  }
+
+  clearVariables(): void {
+    this.variableOverrides = {};
+    this.canvas.render();
+  }
+
+  /** Current expression environment: time built-ins, document variables, host overrides. */
+  env(): Env {
+    return documentEnv(this.store.doc, this.variableOverrides);
+  }
+
+  /** The document with all bindings evaluated (what the canvas shows and geometry uses). */
+  resolvedDocument(): SvgDocument {
+    return resolveDocument(this.store.doc, this.env());
+  }
+
+  /** Re-render on a timer while any binding depends on the time built-ins. */
+  private syncAnimation(): void {
+    const wants = this.features.variables && documentUsesTime(this.store.doc) && !this.destroyed;
+    if (wants && !this.animTimer) {
+      this.animTimer = setInterval(() => {
+        if (this.destroyed) return;
+        this.canvas.render();
+      }, 200);
+    } else if (!wants && this.animTimer) {
+      clearInterval(this.animTimer);
+      this.animTimer = null;
+    }
   }
 
   /** Re-read the shape registry (call after `registerShape`). */
@@ -713,6 +771,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (this.destroyed) return;
     this.destroyed = true;
     for (const d of this.disposers) d();
+    if (this.animTimer) clearInterval(this.animTimer);
     this.layoutObserver?.disconnect();
     this.canvas.destroy();
     this.toolbar?.destroy();

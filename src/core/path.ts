@@ -284,3 +284,44 @@ export function polygonsBounds(polys: Polygon[]): { x: number; y: number; width:
   if (minX === Infinity) return null;
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
+
+/**
+ * Serialise polygons with rounded corners: each corner is cut back by
+ * `radius` along both edges (clamped to half the shorter edge) and joined by
+ * a tangent circular arc.
+ */
+export function polygonsToRoundedPath(polys: Polygon[], radius: number): string {
+  if (radius <= 0.01) return polygonsToPath(polys);
+  return polys
+    .filter((p) => p.length >= 3)
+    .map((points) => {
+      const n = points.length;
+      const segs: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const prev = points[(i - 1 + n) % n];
+        const cur = points[i];
+        const next = points[(i + 1) % n];
+        const d1 = Math.hypot(prev.x - cur.x, prev.y - cur.y);
+        const d2 = Math.hypot(next.x - cur.x, next.y - cur.y);
+        const cut = Math.min(radius, d1 / 2, d2 / 2);
+        if (cut < 0.01 || d1 === 0 || d2 === 0) {
+          segs.push(`${i === 0 ? 'M' : 'L'}${fmt(cur.x)} ${fmt(cur.y)}`);
+          continue;
+        }
+        const p1 = { x: cur.x + ((prev.x - cur.x) / d1) * cut, y: cur.y + ((prev.y - cur.y) / d1) * cut };
+        const p2 = { x: cur.x + ((next.x - cur.x) / d2) * cut, y: cur.y + ((next.y - cur.y) / d2) * cut };
+        const v1 = { x: prev.x - cur.x, y: prev.y - cur.y };
+        const v2 = { x: next.x - cur.x, y: next.y - cur.y };
+        const cos = (v1.x * v2.x + v1.y * v2.y) / (d1 * d2);
+        const theta = Math.acos(Math.max(-1, Math.min(1, cos)));
+        const r = cut * Math.tan(theta / 2);
+        const cross = v1.x * v2.y - v1.y * v2.x;
+        const sweep = cross > 0 ? 0 : 1;
+        segs.push(`${i === 0 ? 'M' : 'L'}${fmt(p1.x)} ${fmt(p1.y)}`);
+        if (Number.isFinite(r) && r > 0.01) segs.push(`A${fmt(r)} ${fmt(r)} 0 0 ${sweep} ${fmt(p2.x)} ${fmt(p2.y)}`);
+        else segs.push(`Q${fmt(cur.x)} ${fmt(cur.y)} ${fmt(p2.x)} ${fmt(p2.y)}`);
+      }
+      return segs.join(' ') + ' Z';
+    })
+    .join(' ');
+}
