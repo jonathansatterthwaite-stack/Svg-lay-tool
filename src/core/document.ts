@@ -14,7 +14,7 @@ import {
 import { EFFECT_DEFS } from './effects';
 import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Binding, Effect, Fill, GridSettings, GroupLayer, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
+import type { Action, Binding, Effect, Fill, Gesture, GridSettings, GroupLayer, Hotspot, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -369,6 +369,7 @@ export function cloneLayer(layer: Layer): Layer {
     id: createId(layer.type === 'group' ? 'g' : 'l'),
     modifiers: (layer.modifiers ?? []).map(cloneModifier),
     ...(layer.bindings ? { bindings: layer.bindings.map((b) => ({ ...b, id: createId('b') })) } : {}),
+    ...(layer.hotspot ? { hotspot: cloneHotspot(layer.hotspot) } : {}),
   };
   if (base.type === 'group') {
     return { ...base, stretch: { ...(base.stretch ?? IDENTITY2) }, children: base.children.map(cloneLayer) };
@@ -722,6 +723,66 @@ function normalizeBinding(input: unknown): Binding | null {
   };
 }
 
+/** A copy of a hotspot with fresh ids (a duplicated layer gets its own gestures and actions). */
+export function cloneHotspot(h: Hotspot): Hotspot {
+  return {
+    hidden: h.hidden,
+    gestures: h.gestures.map((g) => ({ ...g, id: createId('g'), actions: g.actions.map((a) => ({ ...a, id: createId('a') })) })),
+  };
+}
+
+/** Coerce an untrusted hotspot (a drawing may come from anyone): unknown gestures and actions are dropped. */
+export function normalizeHotspot(input: unknown): Hotspot | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  const gestures = Array.isArray(raw.gestures) ? raw.gestures.map(normalizeGesture).filter((g): g is Gesture => !!g) : [];
+  return { hidden: raw.hidden === true, gestures };
+}
+
+function normalizeGesture(input: unknown): Gesture | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  if (raw.on !== 'tap' && raw.on !== 'drag') return null;
+  const actions = Array.isArray(raw.actions) ? raw.actions.map(normalizeAction).filter((a): a is Action => !!a) : [];
+  return {
+    id: typeof raw.id === 'string' ? raw.id : createId('g'),
+    on: raw.on,
+    ...(raw.on === 'drag' ? { axis: raw.axis === 'y' ? ('y' as const) : ('x' as const) } : {}),
+    actions,
+  };
+}
+
+function normalizeAction(input: unknown): Action | null {
+  if (!input || typeof input !== 'object') return null;
+  const raw = input as Record<string, unknown>;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const formula = (v: unknown) => (typeof v === 'string' ? v.slice(0, 500) : '0');
+  if (typeof raw.var !== 'string' || !IDENT.test(raw.var)) return null;
+  const id = typeof raw.id === 'string' ? raw.id : createId('a');
+  switch (raw.do) {
+    case 'set':
+      return { id, do: 'set', var: raw.var, to: formula(raw.to) };
+    case 'add':
+      return {
+        id,
+        do: 'add',
+        var: raw.var,
+        by: formula(raw.by),
+        ...(typeof raw.min === 'number' && Number.isFinite(raw.min) ? { min: raw.min } : {}),
+        ...(typeof raw.max === 'number' && Number.isFinite(raw.max) ? { max: raw.max } : {}),
+        ...(raw.wrap === true ? { wrap: true } : {}),
+      };
+    case 'mark':
+      return { id, do: 'mark', var: raw.var };
+    case 'drag': {
+      const step = num(raw.step, 0);
+      return { id, do: 'drag', var: raw.var, from: num(raw.from, 0), to: num(raw.to, 1), ...(step > 0 ? { step } : {}) };
+    }
+    default:
+      return null;
+  }
+}
+
 function normalizeLayer(input: unknown): Layer | null {
   if (!input || typeof input !== 'object') return null;
   const raw = input as Record<string, unknown>;
@@ -767,6 +828,7 @@ function normalizeLayer(input: unknown): Layer | null {
     rotation: num(raw.rotation, 0),
     modifiers,
     ...(Array.isArray(raw.bindings) ? { bindings: raw.bindings.map(normalizeBinding).filter((b): b is Binding => !!b) } : {}),
+    ...(raw.hotspot ? { hotspot: normalizeHotspot(raw.hotspot) ?? undefined } : {}),
   };
   if (raw.type === 'group') {
     const children = Array.isArray(raw.children)

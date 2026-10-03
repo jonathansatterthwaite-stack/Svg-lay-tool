@@ -20,6 +20,7 @@ import { el, isTypingInside } from './dom';
 import type { SvgLayEditor } from './editor';
 import { button, miniField, numberInput, row, section, slider, textInput } from './fields';
 import { icon } from './icons';
+import { interactSection } from './interact-panel';
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -41,6 +42,9 @@ export class VariablesPanel {
     this.el.replaceChildren();
     this.el.appendChild(this.variablesSection());
     this.el.appendChild(this.bindingsSection());
+    // What touching the selected layer does (hotspots: see interact-panel.ts).
+    const sel = this.editor.selectedLayers();
+    if (sel.length === 1) this.el.appendChild(interactSection(this.editor, sel[0]));
   }
 
   // -------------------------------------------------------------------------

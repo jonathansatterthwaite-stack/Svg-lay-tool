@@ -159,6 +159,11 @@ function renderChildren(layers: Layer[], ctx: Ctx): VNode[] {
   const below: Layer[] = [];
   for (const layer of layers) {
     if (!layer.visible) continue;
+    // Only a hotspot (see interaction.ts): not drawn, except as a hatched outline while editing.
+    if (layer.hotspot?.hidden) {
+      if (ctx.interactive) acc.push(renderLayer(layer, ctx, { fill: 'rgba(255,190,60,0.14)', stroke: 'rgba(255,170,30,0.95)', ghost: true }));
+      continue;
+    }
     const mask = layerMask(layer);
     if (mask) {
       acc = applyMask(layer, mask, acc, below, ctx);

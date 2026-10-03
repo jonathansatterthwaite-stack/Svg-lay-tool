@@ -184,7 +184,49 @@ export interface LayerBase {
   modifiers: Modifier[];
   /** Properties driven by expressions over the document's variables (see bindings.ts). */
   bindings?: Binding[];
+  /** Makes the layer a hotspot: gestures on it run actions that change variables (see interaction.ts). */
+  hotspot?: Hotspot;
 }
+
+/**
+ * A layer that listens for gestures. Its outline is the hit area (a group's is its
+ * children's), as the layer is now (after bindings), so a hotspot moves with its layer.
+ */
+export interface Hotspot {
+  /** Only a hotspot: not drawn when the picture is shown (the editor shows it hatched). */
+  hidden: boolean;
+  gestures: Gesture[];
+}
+
+export type GestureType = 'tap' | 'drag';
+
+/** A gesture on a hotspot and what it does. */
+export interface Gesture {
+  id: string;
+  on: GestureType;
+  /** drag: the direction that counts (`x` left to right, `y` top to bottom). */
+  axis?: 'x' | 'y';
+  /** Run in order: a later action sees what an earlier one set. */
+  actions: Action[];
+}
+
+/**
+ * What a gesture does. Formulas use the document's variables, the host's and the
+ * time (as bindings do). `var` is the variable changed: the document's own, or a
+ * host value (a host keeps the ones it knows of; the others last while the picture is open).
+ * - set: var = formula
+ * - add: var += formula, kept within min..max (wrapping round instead when `wrap`)
+ * - mark: var = now (ms): when it happened, for `since(var)`
+ * - drag: var follows the finger along the gesture's axis, from..to across the
+ *   hotspot (as it was when the drag began), snapped to step
+ */
+export type Action =
+  | { id: string; do: 'set'; var: string; to: string }
+  | { id: string; do: 'add'; var: string; by: string; min?: number; max?: number; wrap?: boolean }
+  | { id: string; do: 'mark'; var: string }
+  | { id: string; do: 'drag'; var: string; from: number; to: number; step?: number };
+
+export type ActionType = Action['do'];
 
 /** A user-editable number the document exposes (a slider in the editor, an input for a host app). */
 export interface Variable {

@@ -242,6 +242,7 @@ export const EXPR_REFERENCE: ExprReference[] = [
   { name: 'step', signature: 'step(edge, v)', label: '1 when v ≥ edge, else 0' },
   { name: 'smoothstep', signature: 'smoothstep(a, b, v)', label: 'Smooth 0→1 as v goes a→b' },
   { name: 'ease', signature: 'ease(t)', label: 'Ease in-out of t (0..1)' },
+  { name: 'since', signature: 'since(t)', label: 'Seconds since a marked time t (a variable set by a "mark" action)' },
   { name: 'sqrt', signature: 'sqrt(v)', label: 'Square root' },
   { name: 'cbrt', signature: 'cbrt(v)', label: 'Cube root' },
   { name: 'pow', signature: 'pow(a, b)', label: 'a to the power b (also a ^ b)' },
@@ -318,6 +319,11 @@ export function evaluateExpr(expr: Expr, env: Env): number {
     case 'cond':
       return evaluateExpr(expr.test, env) ? evaluateExpr(expr.yes, env) : evaluateExpr(expr.no, env);
     case 'call': {
+      // since(t): seconds from a marked time (ms, as `now`) to now.
+      if (expr.name === 'since') {
+        const now = typeof env.now === 'number' ? env.now : Date.now();
+        return expr.args.length ? (now - evaluateExpr(expr.args[0], env)) / 1000 : 0;
+      }
       const fn = FUNCTIONS[expr.name];
       if (!fn) throw new ExprError(`Unknown function '${expr.name}'`);
       return fn(...expr.args.map((a) => evaluateExpr(a, env)));
@@ -365,6 +371,7 @@ export function referencedNames(src: string): string[] {
         walk(e.no);
         break;
       case 'call':
+        if (e.name === 'since') out.add('now'); // it reads the time
         e.args.forEach(walk);
         break;
       default:
@@ -379,4 +386,4 @@ export function referencedNames(src: string): string[] {
   return [...out];
 }
 
-export const EXPR_FUNCTION_NAMES = Object.keys(FUNCTIONS);
+export const EXPR_FUNCTION_NAMES = [...Object.keys(FUNCTIONS), 'since'];

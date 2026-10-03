@@ -250,6 +250,51 @@ groups' rotation bound to time), or a pile of apples (each apple's `visible`
 bound to `count >= n`). The demo's "Clock & gauge" sample shows the first two.
 Hide the panel with `features.variables: false`.
 
+### Hotspots and interaction
+
+A layer can be a **hotspot**: touching it in the finished picture changes variables, and the
+bindings redraw it. So an abacus's beads can be slid, an hourglass flipped, a lantern lit.
+
+```ts
+layer.hotspot = {
+  hidden: true, // only a hotspot: not drawn (shown hatched while editing)
+  gestures: [
+    { id: 'g1', on: 'drag', axis: 'x', actions: [{ id: 'a1', do: 'drag', var: 'rod1', from: 0, to: 10, step: 1 }] },
+    { id: 'g2', on: 'tap', actions: [{ id: 'a2', do: 'set', var: 'lit', to: '1 - lit' }] },
+  ],
+};
+```
+
+- **Gestures:** `tap` (a quick touch or click) and `drag` (along `axis` `x` or `y`, measured across
+  the hotspot's box as it was when the drag began).
+- **Actions** run in order (each sees the ones before): `set` (var = formula), `add` (var += formula,
+  kept between `min` and `max`, or wrapping round with `wrap`), `mark` (var = `now`, for timers and
+  animations with `since(var)`: seconds since), `drag` (var follows the finger from..to, snapped to `step`).
+- The hit area is the layer's outline as it is now (after bindings; a group's is its shapes'), so a
+  hotspot moves with its layer. The topmost hotspot under the finger gets the press.
+- In the editor, the **Interact** section (Variables tab, under Bindings) makes the selected layer a
+  hotspot and edits its gestures and actions; **Preview** makes hotspots work on the canvas, with
+  values that reset when Preview ends. The editor emits `interact` with the changed values.
+- A host app shows a drawing interactively with the headless runtime:
+
+```ts
+import { createInteraction, resolveDocument, documentEnv } from 'svg-lay-tool';
+
+let values = {};
+const env = () => documentEnv(doc, values);
+const ix = createInteraction({
+  document: () => resolveDocument(doc, env()),
+  env,
+  onChange: (changed, done) => { values = { ...values, ...changed }; redraw(); }, // done: false while dragging
+});
+// pointer positions in document coordinates:
+el.onpointerdown = (e) => { if (ix.down(toDoc(e))) { /* the hotspot took it; follow with ix.move / ix.up */ } };
+```
+
+`hotspotAt(doc, point, tolerance?)` and `hotspotsOf(doc)` find hotspots; `runActions(actions, env, now, drag?)`
+runs actions on their own; `documentHasHotspots(doc)` says whether a drawing does anything when touched.
+Loading (`normalizeDocument`) drops unknown gestures and actions, so drawings from anyone are safe to open.
+
 ### Masks
 
 Add a `mask` modifier and the layer stops drawing itself; instead it affects

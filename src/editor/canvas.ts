@@ -64,7 +64,9 @@ type DragState =
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
   | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> }
-  | { kind: 'anchor'; id: string; bindingId: string; localInv: Mat; box: Rect };
+  | { kind: 'anchor'; id: string; bindingId: string; localInv: Mat; box: Rect }
+  /** Preview: a press on a hotspot, handed to the editor's interaction. */
+  | { kind: 'interact' };
 
 let instanceCounter = 0;
 
@@ -453,6 +455,7 @@ export class CanvasView {
         this.editor.store.cancelTransaction();
       }
       if (this.drag?.kind === 'press') clearTimeout(this.drag.timer);
+      if (this.drag?.kind === 'interact') this.editor.interaction.cancel();
       this.activeHandle = null;
       this.lifted = false;
       const [a, b] = [...this.pointers.values()];
@@ -478,6 +481,13 @@ export class CanvasView {
       return;
     }
     if (e.button !== 0) return;
+    // Preview: hotspots take presses on them (the rest still pans).
+    if (this.editor.preview && this.editor.features.variables && this.editor.interaction.down(this.screenToWorld(screen))) {
+      this.drag = { kind: 'interact' };
+      this.stage.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
 
     const handleEl = e.target instanceof Element ? e.target.closest('[data-handle]') : null;
     if (handleEl && this.editor.selection.length === 1) {
@@ -624,6 +634,9 @@ export class CanvasView {
     }
     if (!d) return;
     switch (d.kind) {
+      case 'interact':
+        this.editor.interaction.move(this.screenToWorld(screen));
+        break;
       case 'press': {
         // Moved before the hold completed: this is a pan.
         if (Math.hypot(screen.x - d.startScreen.x, screen.y - d.startScreen.y) > (this.coarse ? 10 : 5)) {
@@ -757,6 +770,10 @@ export class CanvasView {
     this.activeHandle = null;
     this.lifted = false;
     switch (d.kind) {
+      case 'interact':
+        if (e.type === 'pointercancel') this.editor.interaction.cancel();
+        else this.editor.interaction.up(this.screenToWorld(this.eventScreen(e)));
+        break;
       case 'press':
         // A tap shorter than the hold: deliberately does nothing to the selection.
         clearTimeout(d.timer);

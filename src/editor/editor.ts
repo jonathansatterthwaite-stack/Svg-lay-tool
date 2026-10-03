@@ -30,6 +30,8 @@ import {
   DEFAULT_GRID,
   documentUsesTime,
   documentEnv,
+  createInteraction,
+  type Interaction,
   resolveDocument,
   createVariable,
   upsertVariable,
@@ -126,6 +128,8 @@ export interface EditorEvents extends Record<string, unknown[]> {
   selectionchange: [ids: string[]];
   viewchange: [view: ViewState];
   previewchange: [on: boolean];
+  /** Variables changed by touching a hotspot in Preview (`done` false while a drag goes on). */
+  interact: [values: Env, done: boolean];
   snapchange: [on: boolean];
   panelresize: [widths: PanelWidths];
 }
@@ -199,8 +203,12 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   private modifiersPanel: ModifiersPanel | null = null;
   private variablesPanel: VariablesPanel | null = null;
   private animTimer: ReturnType<typeof setInterval> | null = null;
+  private animEvery = 200;
   /** Variable values supplied by the host app; they override the document's own. */
   variableOverrides: Env = {};
+  /** Values changed by touching hotspots in Preview: they last until Preview ends. */
+  previewValues: Env = {};
+  private interactionInstance: Interaction | null = null;
   /** Host-registered variable groups (see registerVariables). */
   variableGroups: VariableGroup[] = [];
   /** Host-registered "+ add variable" buttons (see registerVariablePresets). */
@@ -794,9 +802,29 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   renderOptions(): RenderOptions {
     const f = this.features;
     const out: RenderOptions = f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
-    const vars = { ...this.appVariableValues(), ...this.variableOverrides };
+    const vars = { ...this.appVariableValues(), ...this.variableOverrides, ...(this.preview ? this.previewValues : {}) };
     if (Object.keys(vars).length) out.variables = vars;
     return out;
+  }
+
+  /** Hotspots in Preview: the canvas passes presses on, in document coordinates (see interaction.ts). */
+  get interaction(): Interaction {
+    if (!this.interactionInstance) {
+      const zoom = () => this.view.zoom || 1;
+      this.interactionInstance = createInteraction({
+        document: () => this.resolvedDocument(),
+        env: () => this.env(),
+        onChange: (values, done) => {
+          this.previewValues = { ...this.previewValues, ...values };
+          this.canvas.render();
+          this.refreshVariablesPanel();
+          this.emit('interact', values, done);
+        },
+        slop: () => (this.coarsePointer ? 10 : 5) / zoom(),
+        tolerance: () => (this.coarsePointer ? 14 : 6) / zoom(),
+      });
+    }
+    return this.interactionInstance;
   }
 
   /** Toggle snapping to the document grid. */
@@ -816,6 +844,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   setPreview(on: boolean): void {
     if (this.preview === on) return;
     this.preview = on;
+    this.previewValues = {}; // a fresh try each time
+    this.interactionInstance?.cancel();
+    this.syncAnimation();
     this.refresh(false);
     this.emit('previewchange', on);
   }
@@ -973,7 +1004,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   /** Current expression environment: time built-ins, document variables, app variables, host overrides. */
   env(): Env {
-    return documentEnv(this.store.doc, { ...this.appVariableValues(), ...this.variableOverrides });
+    return documentEnv(this.store.doc, { ...this.appVariableValues(), ...this.variableOverrides, ...(this.preview ? this.previewValues : {}) });
   }
 
   private refreshVariablesPanel(): void {
@@ -989,14 +1020,18 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   /** Re-render on a timer while any binding depends on the time built-ins. */
   private syncAnimation(): void {
     const wants = this.features.variables && documentUsesTime(this.store.doc) && !this.destroyed;
+    // Smoother while previewing (something touched may be animating); calmer while editing.
+    const every = this.preview ? 40 : 200;
+    if (this.animTimer && (!wants || this.animEvery !== every)) {
+      clearInterval(this.animTimer);
+      this.animTimer = null;
+    }
     if (wants && !this.animTimer) {
+      this.animEvery = every;
       this.animTimer = setInterval(() => {
         if (this.destroyed) return;
         this.canvas.render();
-      }, 200);
-    } else if (!wants && this.animTimer) {
-      clearInterval(this.animTimer);
-      this.animTimer = null;
+      }, every);
     }
   }
 
