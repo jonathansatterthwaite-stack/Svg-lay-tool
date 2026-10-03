@@ -14,3 +14,4 @@ export * from './render';
 export * from './store';
 export * from './export';
 export * from './interaction';
+export * from './sounds';

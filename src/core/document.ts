@@ -14,7 +14,7 @@ import {
 import { EFFECT_DEFS } from './effects';
 import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Action, Binding, Effect, Fill, Gesture, GridSettings, GroupLayer, Hotspot, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SvgDocument, Variable } from './types';
+import type { Action, Binding, Effect, Fill, Gesture, GestureType, GridSettings, GroupLayer, Hotspot, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SoundAsset, SvgDocument, Variable } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -672,7 +672,24 @@ export function normalizeDocument(input: unknown): SvgDocument {
     layers,
     variables: Array.isArray(raw.variables) ? raw.variables.map(normalizeVariable).filter((v): v is Variable => !!v) : [],
     grid: normalizeGrid(raw.grid),
+    ...(Array.isArray(raw.sounds) && raw.sounds.length ? { sounds: normalizeSounds(raw.sounds) } : {}),
   };
+}
+
+/** A document's own sounds: at most MAX_SOUNDS, each an audio data URL of at most MAX_SOUND_CHARS. */
+export const MAX_SOUNDS = 4;
+export const MAX_SOUND_CHARS = 65536; // (about 48 KB of audio)
+
+function normalizeSounds(input: unknown[]): SoundAsset[] {
+  const out: SoundAsset[] = [];
+  for (const s of input) {
+    if (out.length >= MAX_SOUNDS || !s || typeof s !== 'object') continue;
+    const raw = s as Record<string, unknown>;
+    const data = typeof raw.data === 'string' ? raw.data : '';
+    if (!/^data:audio\/[a-z0-9.+-]+(;[a-z0-9=.+-]+)*;base64,[A-Za-z0-9+/=]+$/i.test(data) || data.length > MAX_SOUND_CHARS) continue;
+    out.push({ id: typeof raw.id === 'string' && IDENT.test(raw.id) ? raw.id : createId('s').replace(/[^A-Za-z0-9_]/g, '_'), name: typeof raw.name === 'string' ? raw.name.slice(0, 60) : 'Sound', data });
+  }
+  return out;
 }
 
 function normalizeGrid(input: unknown): GridSettings {
@@ -727,7 +744,12 @@ function normalizeBinding(input: unknown): Binding | null {
 export function cloneHotspot(h: Hotspot): Hotspot {
   return {
     hidden: h.hidden,
-    gestures: h.gestures.map((g) => ({ ...g, id: createId('g'), actions: g.actions.map((a) => ({ ...a, id: createId('a') })) })),
+    gestures: h.gestures.map((g) => ({
+      ...g,
+      id: createId('g'),
+      actions: g.actions.map((a) => ({ ...a, id: createId('a') })),
+      ...(g.release ? { release: g.release.map((a) => ({ ...a, id: createId('a') })) } : {}),
+    })),
   };
 }
 
@@ -739,16 +761,25 @@ export function normalizeHotspot(input: unknown): Hotspot | null {
   return { hidden: raw.hidden === true, gestures };
 }
 
+const GESTURES: GestureType[] = ['tap', 'doubletap', 'longpress', 'drag', 'swipe', 'dial', 'hold'];
+
 function normalizeGesture(input: unknown): Gesture | null {
   if (!input || typeof input !== 'object') return null;
   const raw = input as Record<string, unknown>;
-  if (raw.on !== 'tap' && raw.on !== 'drag') return null;
-  const actions = Array.isArray(raw.actions) ? raw.actions.map(normalizeAction).filter((a): a is Action => !!a) : [];
+  const on = raw.on as GestureType;
+  if (!GESTURES.includes(on)) return null;
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(normalizeAction).filter((a): a is Action => !!a) : []);
+  // A finger's position only means something while it moves: drag values only on drag and dial.
+  const fits = (a: Action) => a.do !== 'drag' || on === 'drag' || on === 'dial';
+  const turns = typeof raw.turns === 'number' && Number.isFinite(raw.turns) ? Math.min(20, Math.max(0.1, raw.turns)) : 1;
   return {
     id: typeof raw.id === 'string' ? raw.id : createId('g'),
-    on: raw.on,
-    ...(raw.on === 'drag' ? { axis: raw.axis === 'y' ? ('y' as const) : ('x' as const) } : {}),
-    actions,
+    on,
+    ...(on === 'drag' ? { axis: raw.axis === 'y' ? ('y' as const) : ('x' as const) } : {}),
+    ...(on === 'swipe' ? { dir: (['up', 'down', 'left', 'right'] as const).find((d) => d === raw.dir) ?? ('any' as const) } : {}),
+    ...(on === 'dial' ? { turns } : {}),
+    actions: list(raw.actions).filter(fits),
+    ...(on === 'hold' ? { release: list(raw.release).filter(fits) } : {}),
   };
 }
 
@@ -757,8 +788,15 @@ function normalizeAction(input: unknown): Action | null {
   const raw = input as Record<string, unknown>;
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const formula = (v: unknown) => (typeof v === 'string' ? v.slice(0, 500) : '0');
-  if (typeof raw.var !== 'string' || !IDENT.test(raw.var)) return null;
   const id = typeof raw.id === 'string' ? raw.id : createId('a');
+  // Sounds and buzzes change no variable.
+  if (raw.do === 'sound') {
+    if (typeof raw.sound !== 'string' || !IDENT.test(raw.sound)) return null;
+    const volume = num(raw.volume, 1);
+    return { id, do: 'sound', sound: raw.sound, ...(volume < 1 ? { volume: Math.max(0, volume) } : {}) };
+  }
+  if (raw.do === 'vibrate') return { id, do: 'vibrate', ms: Math.round(Math.min(1000, Math.max(1, num(raw.ms, 30)))) };
+  if (typeof raw.var !== 'string' || !IDENT.test(raw.var)) return null;
   switch (raw.do) {
     case 'set':
       return { id, do: 'set', var: raw.var, to: formula(raw.to) };
@@ -774,9 +812,10 @@ function normalizeAction(input: unknown): Action | null {
       };
     case 'mark':
       return { id, do: 'mark', var: raw.var };
-    case 'drag': {
+    case 'drag':
+    case 'random': {
       const step = num(raw.step, 0);
-      return { id, do: 'drag', var: raw.var, from: num(raw.from, 0), to: num(raw.to, 1), ...(step > 0 ? { step } : {}) };
+      return { id, do: raw.do, var: raw.var, from: num(raw.from, 0), to: num(raw.to, 1), ...(step > 0 ? { step } : {}) };
     }
     default:
       return null;

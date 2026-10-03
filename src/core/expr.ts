@@ -211,6 +211,20 @@ const FUNCTIONS: Record<string, (...a: number[]) => number> = {
     const c = Math.min(Math.max(t, 0), 1);
     return c * c * (3 - 2 * c);
   },
+  /** bounce(t): 0 to 1, landing with bounces (t in [0, 1]) */
+  bounce: (t) => {
+    let c = Math.min(Math.max(t, 0), 1);
+    const n = 7.5625, d = 2.75;
+    if (c < 1 / d) return n * c * c;
+    if (c < 2 / d) return n * (c -= 1.5 / d) * c + 0.75;
+    if (c < 2.5 / d) return n * (c -= 2.25 / d) * c + 0.9375;
+    return n * (c -= 2.625 / d) * c + 0.984375;
+  },
+  /** spring(t): 0 to 1, overshooting and settling like a spring (t in [0, 1]) */
+  spring: (t) => {
+    const c = Math.min(Math.max(t, 0), 1);
+    return c >= 1 ? 1 : 1 - Math.exp(-6 * c) * Math.cos(3 * Math.PI * c);
+  },
 };
 
 /** One entry of the formula reference shown in the editor. */
@@ -242,6 +256,8 @@ export const EXPR_REFERENCE: ExprReference[] = [
   { name: 'step', signature: 'step(edge, v)', label: '1 when v ≥ edge, else 0' },
   { name: 'smoothstep', signature: 'smoothstep(a, b, v)', label: 'Smooth 0→1 as v goes a→b' },
   { name: 'ease', signature: 'ease(t)', label: 'Ease in-out of t (0..1)' },
+  { name: 'bounce', signature: 'bounce(t)', label: 'Ease out with bounces, t 0..1 (a dropped thing landing)' },
+  { name: 'spring', signature: 'spring(t)', label: 'Overshoot and settle, t 0..1 (a spring, a wobble)' },
   { name: 'since', signature: 'since(t)', label: 'Seconds since a marked time t (a variable set by a "mark" action)' },
   { name: 'sqrt', signature: 'sqrt(v)', label: 'Square root' },
   { name: 'cbrt', signature: 'cbrt(v)', label: 'Cube root' },

@@ -265,11 +265,22 @@ layer.hotspot = {
 };
 ```
 
-- **Gestures:** `tap` (a quick touch or click) and `drag` (along `axis` `x` or `y`, measured across
-  the hotspot's box as it was when the drag began).
+- **Gestures:** `tap`; `doubletap` (a single tap on the same hotspot then waits a moment, to tell
+  them apart); `longpress` (held still about half a second); `drag` (along `axis` `x` or `y`, measured
+  across the hotspot's box as it was when the drag began); `swipe` (a quick flick, `dir` `up`, `down`,
+  `left`, `right` or `any`); `dial` (turning the finger round the hotspot's middle: its drag values move
+  from where they are, `turns` turns for the whole range); `hold` (`actions` as the finger goes down,
+  `release` as it lets go).
 - **Actions** run in order (each sees the ones before): `set` (var = formula), `add` (var += formula,
   kept between `min` and `max`, or wrapping round with `wrap`), `mark` (var = `now`, for timers and
-  animations with `since(var)`: seconds since), `drag` (var follows the finger from..to, snapped to `step`).
+  animations with `since(var)`: seconds since), `drag` (var follows the finger from..to, snapped to
+  `step`), `random` (var = a random number from..to; with `step: 1`, a die), `sound` (a built-in sound,
+  or one of the document's own, at `volume`), `vibrate` (`ms`).
+- **Sounds:** `BUILTIN_SOUNDS` (drum, bell, click, chime, pour, tick, whoosh, dice) are made with Web
+  Audio as they play, so nothing is downloaded. A document can keep up to four short sounds of its own in
+  `doc.sounds` (audio data URLs of up to about 48 KB each), so they go wherever the drawing goes.
+  `playSound(doc, name, volume)` plays either; it does nothing where there's no audio.
+- **Easing** for animations: `ease(t)`, `bounce(t)`, `spring(t)` (t 0..1).
 - The hit area is the layer's outline as it is now (after bindings; a group's is its shapes'), so a
   hotspot moves with its layer. The topmost hotspot under the finger gets the press.
 - In the editor, the **Interact** section (Variables tab, under Bindings) makes the selected layer a
@@ -278,7 +289,7 @@ layer.hotspot = {
 - A host app shows a drawing interactively with the headless runtime:
 
 ```ts
-import { createInteraction, resolveDocument, documentEnv } from 'svg-lay-tool';
+import { createInteraction, resolveDocument, documentEnv, playSound } from 'svg-lay-tool';
 
 let values = {};
 const env = () => documentEnv(doc, values);
@@ -286,6 +297,8 @@ const ix = createInteraction({
   document: () => resolveDocument(doc, env()),
   env,
   onChange: (changed, done) => { values = { ...values, ...changed }; redraw(); }, // done: false while dragging
+  onSound: (sound, volume) => playSound(doc, sound, volume),
+  onVibrate: (ms) => navigator.vibrate?.(ms),
 });
 // pointer positions in document coordinates:
 el.onpointerdown = (e) => { if (ix.down(toDoc(e))) { /* the hotspot took it; follow with ix.move / ix.up */ } };

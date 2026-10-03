@@ -198,7 +198,9 @@ export interface Hotspot {
   gestures: Gesture[];
 }
 
-export type GestureType = 'tap' | 'drag';
+export type GestureType = 'tap' | 'doubletap' | 'longpress' | 'drag' | 'swipe' | 'dial' | 'hold';
+
+export type SwipeDirection = 'up' | 'down' | 'left' | 'right' | 'any';
 
 /** A gesture on a hotspot and what it does. */
 export interface Gesture {
@@ -206,8 +208,14 @@ export interface Gesture {
   on: GestureType;
   /** drag: the direction that counts (`x` left to right, `y` top to bottom). */
   axis?: 'x' | 'y';
-  /** Run in order: a later action sees what an earlier one set. */
+  /** swipe: which way. */
+  dir?: SwipeDirection;
+  /** dial: turns of the finger round the hotspot's middle that span a drag action's from..to (default 1). */
+  turns?: number;
+  /** Run in order: a later action sees what an earlier one set. hold: run when the press begins. */
   actions: Action[];
+  /** hold: run when the finger lets go. */
+  release?: Action[];
 }
 
 /**
@@ -224,7 +232,13 @@ export type Action =
   | { id: string; do: 'set'; var: string; to: string }
   | { id: string; do: 'add'; var: string; by: string; min?: number; max?: number; wrap?: boolean }
   | { id: string; do: 'mark'; var: string }
-  | { id: string; do: 'drag'; var: string; from: number; to: number; step?: number };
+  | { id: string; do: 'drag'; var: string; from: number; to: number; step?: number }
+  /** var = a random number from..to (whole steps with step) */
+  | { id: string; do: 'random'; var: string; from: number; to: number; step?: number }
+  /** plays a sound: a built-in one (see sounds.ts) or one of the document's own (its id) */
+  | { id: string; do: 'sound'; sound: string; volume?: number }
+  /** a short buzz, where the device can */
+  | { id: string; do: 'vibrate'; ms: number };
 
 export type ActionType = Action['do'];
 
@@ -316,8 +330,17 @@ export interface SvgDocument {
   layers: Layer[];
   /** Variables available to bindings. */
   variables?: Variable[];
+  /** Short sounds of its own, for sound actions (kept in the document, so they go wherever it goes). */
+  sounds?: SoundAsset[];
   /** Editing grid (never rendered into exports). */
   grid?: GridSettings;
+}
+
+/** A short sound kept in a document: an audio data URL (size-capped when loaded: see normalizeDocument). */
+export interface SoundAsset {
+  id: string;
+  name: string;
+  data: string;
 }
 
 export interface GridSettings {

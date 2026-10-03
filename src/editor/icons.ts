@@ -30,6 +30,7 @@ export const icons = {
   flipH: wrap('<path d="M12 3v18M8 7 3 12l5 5M16 7l5 5-5 5"/>'),
   flipV: wrap('<path d="M3 12h18M7 8l5-5 5 5M7 16l5 5 5-5"/>'),
   plus: wrap('<path d="M12 5v14M5 12h14"/>'),
+  play: wrap('<path d="M7 4v16l13-8Z"/>'),
   settings: wrap('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'),
   modifiers: wrap('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>'),
   variables: wrap('<path d="M4 20c3 0 4-3 5-8s2-8 5-8"/><path d="M6 12h6M14 13l6 6M20 13l-6 6"/>'),

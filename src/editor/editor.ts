@@ -31,6 +31,7 @@ import {
   documentUsesTime,
   documentEnv,
   createInteraction,
+  playSound,
   type Interaction,
   resolveDocument,
   createVariable,
@@ -819,6 +820,14 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
           this.canvas.render();
           this.refreshVariablesPanel();
           this.emit('interact', values, done);
+        },
+        onSound: (sound, volume) => playSound(this.store.doc, sound, volume),
+        onVibrate: (ms) => {
+          try {
+            navigator.vibrate?.(ms);
+          } catch {
+            /* not here */
+          }
         },
         slop: () => (this.coarsePointer ? 10 : 5) / zoom(),
         tolerance: () => (this.coarsePointer ? 14 : 6) / zoom(),
