@@ -282,6 +282,7 @@ export const EDITOR_STYLES = `
 .slt-section-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--_slt-muted); }
 .slt-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 .slt-row > label { flex: 0 0 74px; color: var(--_slt-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slt-row > label.slt-check { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; }
 .slt-row .slt-grow { flex: 1; min-width: 0; }
 .slt-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; }
 .slt-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
