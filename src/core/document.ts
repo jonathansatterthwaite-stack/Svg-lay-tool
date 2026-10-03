@@ -796,6 +796,11 @@ function normalizeAction(input: unknown): Action | null {
     return { id, do: 'sound', sound: raw.sound, ...(volume < 1 ? { volume: Math.max(0, volume) } : {}) };
   }
   if (raw.do === 'vibrate') return { id, do: 'vibrate', ms: Math.round(Math.min(1000, Math.max(1, num(raw.ms, 30)))) };
+  if (raw.do === 'app') {
+    if (typeof raw.app !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,39}$/.test(raw.app)) return null;
+    const key = typeof raw.key === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(raw.key) ? raw.key : undefined;
+    return { id, do: 'app', app: raw.app, ...(key ? { key } : {}), ...(typeof raw.value === 'string' && raw.value.trim() ? { value: formula(raw.value) } : {}) };
+  }
   if (typeof raw.var !== 'string' || !IDENT.test(raw.var)) return null;
   switch (raw.do) {
     case 'set':

@@ -281,6 +281,12 @@ layer.hotspot = {
   `doc.sounds` (audio data URLs of up to about 48 KB each), so they go wherever the drawing goes.
   `playSound(doc, name, volume)` plays either; it does nothing where there's no audio.
 - **Easing** for animations: `ease(t)`, `bounce(t)`, `spring(t)` (t 0..1).
+- **App actions** ask the host app to do something of its own: `{ do: 'app', app: 'useOne', key?, value? }`
+  (`value` is a formula, worked out when it runs). The host offers them to the editor with
+  `appActions: [{ app, label, hint?, key?: { label, options }, value?: { label, default } }]`, so the
+  Interact section lists them beside the built-in actions; the runtime hands them to `onApp(app, key, value)`,
+  and in Preview the editor emits `appaction`. A drawing made for another app keeps its app actions; they do
+  nothing where no host offers them.
 - The hit area is the layer's outline as it is now (after bindings; a group's is its shapes'), so a
   hotspot moves with its layer. The topmost hotspot under the finger gets the press.
 - In the editor, the **Interact** section (Variables tab, under Bindings) makes the selected layer a

@@ -12,6 +12,7 @@ import {
   playSound,
   type Action,
   type ActionType,
+  type AppActionPreset,
   type Gesture,
   type GestureType,
   type Hotspot,
@@ -67,6 +68,19 @@ export function interactSection(editor: SvgLayEditor, layer: Layer): HTMLElement
     setGesture(g, { [which]: next ? list.map((x) => (x.id === a.id ? next : x)) : list.filter((x) => x.id !== a.id) });
   };
 
+  // The actions offered: the built-in ones (drag values only where the finger's position counts),
+  // then the host app's own (as "app:<name>").
+  const kinds = (g: Gesture) => [
+    ...ACTION_TYPES.filter((t) => t.type !== 'drag' || POSITIONAL.includes(g.on)).map((t) => ({ value: t.type as string, label: t.label, hint: t.hint })),
+    ...editor.appActions.map((p) => ({ value: `app:${p.app}`, label: p.label, hint: p.hint ?? '' })),
+  ];
+  const appPreset = (name: string): AppActionPreset | undefined => editor.appActions.find((p) => p.app === name);
+  const makeAction = (kind: string, varName: string): Action => {
+    if (!kind.startsWith('app:')) return createAction(kind as ActionType, varName);
+    const p = appPreset(kind.slice(4));
+    return { id: createId('a'), do: 'app', app: kind.slice(4), ...(p?.key?.options[0] ? { key: p.key.options[0].value } : {}), ...(p?.value ? { value: p.value.default } : {}) };
+  };
+
   const formula = (value: string, placeholder: string, onSet: (v: string) => void) => {
     const input = textInput(value, onSet);
     input.classList.add('slt-binding-expr');
@@ -75,12 +89,12 @@ export function interactSection(editor: SvgLayEditor, layer: Layer): HTMLElement
   };
 
   const actionCard = (g: Gesture, which: Which, a: Action): HTMLElement => {
-    const allowed = ACTION_TYPES.filter((t) => t.type !== 'drag' || POSITIONAL.includes(g.on));
     const lastVar = actionChangesVariable(a) ? a.var : [...names][0] ?? 'value';
-    const typeSel = select(a.do, allowed.map((t) => ({ value: t.type, label: t.label })), (type) =>
-      setAction(g, which, a, { ...createAction(type as ActionType, lastVar), id: a.id }),
-    );
-    typeSel.title = ACTION_TYPES.find((t) => t.type === a.do)?.hint ?? '';
+    const current = a.do === 'app' ? `app:${a.app}` : a.do;
+    const options = kinds(g);
+    if (!options.some((o) => o.value === current)) options.push({ value: current, label: a.do === 'app' ? `App: ${a.app}` : a.do, hint: '' });
+    const typeSel = select(current, options.map((o) => ({ value: o.value, label: o.label })), (kind) => setAction(g, which, a, { ...makeAction(kind, lastVar), id: a.id }));
+    typeSel.title = options.find((o) => o.value === current)?.hint ?? '';
     const head: (HTMLElement | null)[] = [typeSel];
     if (actionChangesVariable(a)) {
       const varInput = textInput(a.var, (v) => {
@@ -149,6 +163,17 @@ export function interactSection(editor: SvgLayEditor, layer: Layer): HTMLElement
       case 'vibrate':
         body.push(el('div', { class: 'slt-grid3' }, [miniField('ms', numberInput(a.ms, (n) => setAction(g, which, a, { ...a, ms: Math.round(Math.min(1000, Math.max(1, n))) }), { min: 1, max: 1000, step: 10, digits: 0 }))]));
         break;
+      case 'app': {
+        const p = appPreset(a.app);
+        if (!p) {
+          body.push(el('div', { class: 'slt-hint' }, [`An action of the app this drawing was made for (${a.app}): it does nothing here.`]));
+          break;
+        }
+        if (p.hint) body.push(el('div', { class: 'slt-hint' }, [p.hint]));
+        if (p.key) body.push(el('div', { class: 'slt-row' }, [el('label', {}, [p.key.label]), select(a.key ?? p.key.options[0]?.value ?? '', p.key.options, (key) => setAction(g, which, a, { ...a, key }))]));
+        if (p.value) body.push(formula(a.value ?? p.value.default, p.value.placeholder ?? p.value.label, (value) => setAction(g, which, a, { ...a, value })));
+        break;
+      }
     }
     if (actionChangesVariable(a) && !names.has(a.var)) {
       body.push(el('div', { class: 'slt-hint' }, [`${a.var} isn't a variable yet: add it in Variables to give it a starting value (else it starts at 0).`]));
@@ -159,14 +184,14 @@ export function interactSection(editor: SvgLayEditor, layer: Layer): HTMLElement
   const actionList = (g: Gesture, which: Which, label?: string): HTMLElement[] => {
     const list = g[which] ?? [];
     const addSel = el('select', { class: 'slt-select' }, [el('option', { value: '' }, [label ?? '+ Add an action…'])]);
-    for (const t of ACTION_TYPES) if (t.type !== 'drag' || POSITIONAL.includes(g.on)) addSel.appendChild(el('option', { value: t.type, title: t.hint }, [t.label]));
+    for (const k of kinds(g)) addSel.appendChild(el('option', { value: k.value, title: k.hint }, [k.label]));
     addSel.addEventListener('change', () => {
-      const type = addSel.value as ActionType;
+      const kind = addSel.value;
       addSel.value = '';
-      if (!type) return;
+      if (!kind) return;
       const prev = [...list].reverse().find(actionChangesVariable);
       const guess = prev?.var ?? [...names][0] ?? 'value';
-      setGesture(g, { [which]: [...list, createAction(type, guess)] });
+      setGesture(g, { [which]: [...list, makeAction(kind, guess)] });
     });
     addSel.addEventListener('keydown', (e) => e.stopPropagation());
     return [...list.map((a) => actionCard(g, which, a)), el('div', { class: 'slt-row' }, [addSel])];

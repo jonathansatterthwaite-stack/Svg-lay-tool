@@ -32,6 +32,7 @@ import {
   documentEnv,
   createInteraction,
   playSound,
+  type AppActionPreset,
   type Interaction,
   resolveDocument,
   createVariable,
@@ -77,6 +78,8 @@ export interface EditorOptions {
   variableGroups?: VariableGroup[];
   /** App-specific "+ add variable" buttons for the Variables panel. */
   variablePresets?: VariablePreset[];
+  /** Actions the host app offers to hotspots' gestures (they reach it through the interaction's onApp). */
+  appActions?: AppActionPreset[];
   /** Hide parts of the UI for tighter embedding. */
   panels?: { toolbar?: boolean; library?: boolean; layers?: boolean; properties?: boolean };
   /**
@@ -131,6 +134,8 @@ export interface EditorEvents extends Record<string, unknown[]> {
   previewchange: [on: boolean];
   /** Variables changed by touching a hotspot in Preview (`done` false while a drag goes on). */
   interact: [values: Env, done: boolean];
+  /** An app action from a hotspot in Preview (the host may show what it would do). */
+  appaction: [app: string, key: string | undefined, value: number | undefined];
   snapchange: [on: boolean];
   panelresize: [widths: PanelWidths];
 }
@@ -214,6 +219,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   variableGroups: VariableGroup[] = [];
   /** Host-registered "+ add variable" buttons (see registerVariablePresets). */
   variablePresets: VariablePreset[] = [];
+  /** Actions the host app offers to hotspots (see AppActionPreset). */
+  appActions: AppActionPreset[] = [];
   private coarsePointer = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private disposers: (() => void)[] = [];
   private destroyed = false;
@@ -229,6 +236,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.features = resolveFeatures({ ...(options.features ?? {}), ...(options.shapes ? { shapes: options.shapes } : {}) });
     this.variableGroups = (options.variableGroups ?? []).map(cloneGroup);
     this.variablePresets = (options.variablePresets ?? []).map((p) => ({ ...p }));
+    this.appActions = (options.appActions ?? []).map((p) => ({ ...p }));
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -822,6 +830,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
           this.emit('interact', values, done);
         },
         onSound: (sound, volume) => playSound(this.store.doc, sound, volume),
+        onApp: (app, key, value) => this.emit('appaction', app, key, value),
         onVibrate: (ms) => {
           try {
             navigator.vibrate?.(ms);

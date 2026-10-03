@@ -56,7 +56,21 @@ export function createAction(type: ActionType, varName = 'value'): Action {
       return { id, do: 'sound', sound: 'click' };
     case 'vibrate':
       return { id, do: 'vibrate', ms: 30 };
+    case 'app':
+      return { id, do: 'app', app: varName };
   }
+}
+
+/**
+ * An action a host app offers (an editor shows them with the built-in ones): its name, a label, and
+ * what it takes: a `key` chosen from options (a state …) and/or a `value` formula.
+ */
+export interface AppActionPreset {
+  app: string;
+  label: string;
+  hint?: string;
+  key?: { label: string; options: { value: string; label: string }[] };
+  value?: { label: string; default: string; placeholder?: string };
 }
 
 /** Descriptions for an editor or a host's help. */
@@ -80,8 +94,8 @@ export const ACTION_TYPES: { type: ActionType; label: string; hint: string }[] =
   { type: 'vibrate', label: 'Vibrate', hint: 'A short buzz, on devices that can' },
 ];
 
-/** Does the action change a variable (sounds and buzzes don't)? */
-export const actionChangesVariable = (a: Action): a is Extract<Action, { var: string }> => a.do !== 'sound' && a.do !== 'vibrate';
+/** Does the action change a variable (sounds, buzzes and the host's own don't)? */
+export const actionChangesVariable = (a: Action): a is Extract<Action, { var: string }> => a.do !== 'sound' && a.do !== 'vibrate' && a.do !== 'app';
 
 /** Does the document have any hotspot that does something? */
 export function documentHasHotspots(doc: SvgDocument): boolean {
@@ -188,7 +202,7 @@ export function hotspotAt(doc: SvgDocument, p: Point, tolerance = 0): HotspotTar
 // What they do
 
 /** What actions ask for besides changing variables. */
-export type ActionEffect = { sound: string; volume: number } | { vibrate: number };
+export type ActionEffect = { sound: string; volume: number } | { vibrate: number } | { app: string; key?: string; value?: number };
 
 /**
  * Run actions in order and return the variables they changed. `env` is what
@@ -243,6 +257,9 @@ export function runActions(actions: Action[], env: Env, now: number, drag?: numb
         case 'vibrate':
           effect?.({ vibrate: a.ms });
           break;
+        case 'app':
+          effect?.({ app: a.app, ...(a.key ? { key: a.key } : {}), ...(a.value !== undefined ? { value: evaluate(a.value, scope) } : {}) });
+          break;
       }
     } catch {
       /* a formula that doesn't work: skip this action */
@@ -265,6 +282,8 @@ export interface InteractionOptions {
   onSound?: (sound: string, volume: number) => void;
   /** A vibrate action: how long, ms. */
   onVibrate?: (ms: number) => void;
+  /** An app action: the host's own (its name, key, and the value its formula came to). */
+  onApp?: (app: string, key: string | undefined, value: number | undefined) => void;
   /** Movement (document units) before a press counts as moving rather than a tap. Default 6. */
   slop?: number | (() => number);
   /** Extra reach (document units) around thin hotspots. Default 0. */
@@ -338,7 +357,8 @@ export class Interaction {
     let env = this.opts.env();
     const effect = (e: ActionEffect) => {
       if ('sound' in e) this.opts.onSound?.(e.sound, e.volume);
-      else this.opts.onVibrate?.(e.vibrate);
+      else if ('vibrate' in e) this.opts.onVibrate?.(e.vibrate);
+      else this.opts.onApp?.(e.app, e.key, e.value);
     };
     for (const g of gestures) {
       const c = runActions(pick(g), env, this.now(), drag, effect, this.opts.random);

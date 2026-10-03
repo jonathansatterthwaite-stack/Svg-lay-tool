@@ -238,7 +238,12 @@ export type Action =
   /** plays a sound: a built-in one (see sounds.ts) or one of the document's own (its id) */
   | { id: string; do: 'sound'; sound: string; volume?: number }
   /** a short buzz, where the device can */
-  | { id: string; do: 'vibrate'; ms: number };
+  | { id: string; do: 'vibrate'; ms: number }
+  /**
+   * asks the host app to do something of its own (`app`: one it offers, e.g. "useOne"), with an
+   * optional `key` (which: a state's key …) and `value` (a formula, worked out when it runs)
+   */
+  | { id: string; do: 'app'; app: string; key?: string; value?: string };
 
 export type ActionType = Action['do'];
 

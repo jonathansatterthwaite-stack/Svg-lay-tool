@@ -178,3 +178,36 @@ describe('gestures', () => {
     expect(t.log.filter((l) => l === 'sound:dice')).toHaveLength(20);
   });
 });
+
+describe('app actions (the host app\'s own)', () => {
+  it('load checked; run with their value worked out; reach the host', () => {
+    const doc = normalizeDocument({ layers: [{ type: 'shape', shape: 'rect', hotspot: { gestures: [{ on: 'tap', actions: [
+      { do: 'app', app: 'state', key: 'lit', value: '1 - lit' },
+      { do: 'app', app: 'useOne' },
+      { do: 'app', app: '<script>' },
+      { do: 'app', app: 'state', key: 'a b' },
+    ] }] } }] });
+    const acts = doc.layers[0].hotspot!.gestures[0].actions;
+    expect(acts).toEqual([
+      expect.objectContaining({ do: 'app', app: 'state', key: 'lit', value: '1 - lit' }),
+      expect.objectContaining({ do: 'app', app: 'useOne' }),
+      expect.objectContaining({ do: 'app', app: 'state' }), // a bad key is dropped, the action kept
+    ]);
+    expect((acts[2] as { key?: string }).key).toBeUndefined();
+    const fx: ActionEffect[] = [];
+    runActions(acts.slice(0, 2), { lit: 0 }, 0, undefined, (e) => fx.push(e));
+    expect(fx).toEqual([{ app: 'state', key: 'lit', value: 1 }, { app: 'useOne' }]);
+  });
+
+  it('a tap with an app action calls the host', () => {
+    let doc: SvgDocument = createDocument({ width: 200, height: 200 });
+    doc = insertLayer(doc, createShapeLayer({ shape: 'ellipse', x: 100, y: 100, width: 100, height: 100, hotspot: createHotspot({ gestures: [
+      createGesture('tap', { actions: [{ id: 'a', do: 'app', app: 'draw' }] }),
+    ] }) }));
+    const calls: string[] = [];
+    const ix = createInteraction({ document: () => doc, env: () => ({}), onChange: () => {}, onApp: (app, key, value) => calls.push(`${app}:${key}:${value}`) });
+    ix.down({ x: 100, y: 100 });
+    ix.up({ x: 100, y: 100 });
+    expect(calls).toEqual(['draw:undefined:undefined']);
+  });
+});
