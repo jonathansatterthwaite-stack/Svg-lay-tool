@@ -118,16 +118,18 @@ export class PropertiesPanel {
   /** Tips for the current device: touch gestures, or keyboard shortcuts with the platform's modifier. */
   private shortcutsSection(): HTMLElement {
     const f = this.editor.features;
-    const pick = f.canvasInteraction === 'hold' ? 'Hold a layer to pick it up' : 'Drag the selected layer to move it';
+    const p = this.editor.preferences;
+    const pick = (p.moveHandle !== 'off' ? 'Drag the ✥ handle to move a layer, or ' : '') + (f.canvasInteraction === 'hold' ? 'hold it to pick it up' : 'drag it');
+    const pan = p.lockView ? 'the view is locked (the pad still moves it)' : p.canvasTouch === 'pad' ? 'pinch to zoom, the view pad pans' : 'pinch to zoom, drag elsewhere to pan';
     if (this.editor.inputMode() === 'touch') {
       return section('Tips', [
-        el('div', { class: 'slt-hint' }, [`${pick} · drag a handle to resize along the canvas axes · drag the ring to rotate · pinch to zoom, drag elsewhere to pan`]),
+        el('div', { class: 'slt-hint' }, [`${pick} · drag a handle to resize along the canvas axes · drag the ring to rotate · ${pan}`]),
         el('div', { class: 'slt-hint' }, [`Select layers in the strip or the Layers tab; the corner button on a group thumbnail opens it. ${f.groups ? 'Group, ungroup, ' : ''}duplicate, reorder and delete from the Layers tab toolbar; undo and redo from the top bar.`]),
       ]);
     }
     const m = this.editor.modKey();
     return section('Shortcuts', [
-      el('div', { class: 'slt-hint' }, [`${pick} · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°) · ${m}+scroll zooms`]),
+      el('div', { class: 'slt-hint' }, [`${pick} · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°) · ${m}+scroll zooms · F zooms to the selection`]),
       el('div', { class: 'slt-hint' }, [`${f.groups ? `${m}+G group · ${m}+Shift+G ungroup · ` : ''}${m}+D duplicate · [ ] reorder · Del delete · ${m}+Z / ${m}+Y undo/redo`]),
       el('div', { class: 'slt-hint' }, ['Select layers in the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.']),
     ]);

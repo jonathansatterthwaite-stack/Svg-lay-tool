@@ -750,9 +750,11 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   setPreferences(patch: Partial<EditorPreferences>): void {
     const next = resolvePreferences({ ...this.preferences, ...patch });
     if (JSON.stringify(next) === JSON.stringify(this.preferences)) return;
+    const tipsChange = (['moveHandle', 'canvasTouch', 'lockView'] as const).some((k) => next[k] !== this.preferences[k]);
     this.preferences = next;
     this.toolbar?.render();
     this.canvas.preferencesChanged();
+    if (tipsChange) this.propsPanel?.render(); // its Tips / Shortcuts mention them
     this.emit('preferenceschange', { ...next });
   }
 
