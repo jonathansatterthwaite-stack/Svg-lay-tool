@@ -1,6 +1,15 @@
 import {
+  anchorAttachable,
   anchorAxes,
+  anchorLocalPoint,
+  anchorUnits,
+  anchorWorldPoint,
+  applyToPoint,
   bindableTargets,
+  invert,
+  layerCentreWorld,
+  layerLocalBounds,
+  layerWorldMatrix,
   createBinding,
   evaluate,
   evaluateVariable,
@@ -11,6 +20,7 @@ import {
   TIME_VARIABLES,
   upsertVariable,
   type Binding,
+  type BindingAnchor,
   type Layer,
   type SvgDocument,
   type Variable,
@@ -18,7 +28,7 @@ import {
 } from '../core';
 import { el, isTypingInside } from './dom';
 import type { SvgLayEditor } from './editor';
-import { button, miniField, numberInput, row, section, slider, textInput } from './fields';
+import { button, miniField, numberInput, row, section, select, slider, textInput } from './fields';
 import { icon } from './icons';
 import { interactSection } from './interact-panel';
 
@@ -257,9 +267,9 @@ export class VariablesPanel {
     const card = el('div', { class: 'slt-effect slt-binding' }, [head, el('div', { class: 'slt-row' }, [el('span', { class: 'slt-fx' }, ['ƒ']), input]), result]);
     const axes = anchorAxes(b.target);
     if (axes) {
-      const anchor = b.anchor ?? { x: 0.5, y: 0.5 };
-      const setAnchor = (p: Partial<{ x: number; y: number }>, commit: boolean) => {
-        const next = { ...anchor, ...p };
+      const anchor: BindingAnchor = b.anchor ?? { x: 0.5, y: 0.5 };
+      const setAnchor = (p: Partial<BindingAnchor>, commit: boolean, replace = false) => {
+        const next: BindingAnchor = replace ? (p as BindingAnchor) : { ...anchor, ...p };
         const fn = (l: Layer) => setBinding(l, { ...b, anchor: next });
         const store = this.editor.store;
         if (!commit) {
@@ -271,9 +281,18 @@ export class VariablesPanel {
         }
       };
       const what = b.target === 'rotation' ? 'Pivot' : b.target === 'scale' ? 'Scale about' : 'Fixed edge';
+      const mode: 'box' | 'px' | 'layer' = anchor.layer ? 'layer' : anchor.unit === 'px' ? 'px' : 'box';
       const fields: HTMLElement[] = [];
-      if (axes.includes('x')) fields.push(row(`${what} X %`, slider(anchor.x * 100, (v, c) => setAnchor({ x: v / 100 }, c), { min: -50, max: 150, step: 1 })));
-      if (axes.includes('y')) fields.push(row(`${what} Y %`, slider(anchor.y * 100, (v, c) => setAnchor({ y: v / 100 }, c), { min: -50, max: 150, step: 1 })));
+      const doc = this.editor.document;
+      const span = Math.max(doc.width, doc.height);
+      if (mode === 'box') {
+        if (axes.includes('x')) fields.push(row(`${what} X %`, slider(anchor.x * 100, (v, c) => setAnchor({ x: v / 100 }, c), { min: -50, max: 150, step: 1 })));
+        if (axes.includes('y')) fields.push(row(`${what} Y %`, slider(anchor.y * 100, (v, c) => setAnchor({ y: v / 100 }, c), { min: -50, max: 150, step: 1 })));
+      } else {
+        const label = mode === 'layer' ? 'Offset' : what;
+        fields.push(row(`${label} X`, slider(anchor.x, (v, c) => setAnchor({ x: v }, c), { min: -span, max: span, step: 0.5, digits: 1 })));
+        fields.push(row(`${label} Y`, slider(anchor.y, (v, c) => setAnchor({ y: v }, c), { min: -span, max: span, step: 0.5, digits: 1 })));
+      }
       const presets = el('div', { class: 'slt-anchor-presets' });
       const points: [number, number, string][] = [[0, 0, 'top left'], [0.5, 0, 'top'], [1, 0, 'top right'], [0, 0.5, 'left'], [0.5, 0.5, 'centre'], [1, 0.5, 'right'], [0, 1, 'bottom left'], [0.5, 1, 'bottom'], [1, 1, 'bottom right']];
       for (const [px, py, title] of points) {
@@ -282,13 +301,63 @@ export class VariablesPanel {
         dot.addEventListener('click', () => setAnchor({ x: axes.includes('x') ? px : anchor.x, y: axes.includes('y') ? py : anchor.y }, true));
         presets.appendChild(dot);
       }
+      // The point where it is now, so switching how it's given doesn't move it.
+      const ed = this.editor;
+      const here = () => anchorWorldPoint(ed.document, layer.id, anchor, ed.resolvedDocument());
+      const toLocalPx = (): BindingAnchor => {
+        const w = here();
+        const p = w ? applyToPoint(invert(layerWorldMatrix(ed.document, layer.id)), w) : anchorLocalPoint(layer, anchor);
+        return { x: round1(p.x), y: round1(p.y), unit: 'px' };
+      };
+      if (mode === 'box') presets.style.display = '';
+      else presets.style.display = 'none';
       card.appendChild(el('div', { class: 'slt-row slt-anchor-row' }, [el('label', {}, [what]), presets, el('div', { class: 'slt-grow' }, fields)]));
-      card.appendChild(el('div', { class: 'slt-hint' }, ['0 % is the left/top of the layer box, 100 % the right/bottom. Drag the marker on the canvas while this tab is open.']));
+      if (anchorUnits(b.target)) {
+        const unit = el('span', { class: 'slt-seg slt-anchor-unit', role: 'radiogroup', 'aria-label': `${what} given as` });
+        const units: ['box' | 'px', string, string][] = [['box', 'of its box', 'X and Y as % of the layer box'], ['px', 'pixels', "X and Y in the layer's own units, from its middle: anywhere, even outside it"]];
+        for (const [u, text, title] of units) {
+          const btn = el('button', { type: 'button', role: 'radio', title, 'aria-checked': mode === u ? 'true' : 'false' }, [text]);
+          if (mode === u) btn.dataset.active = '';
+          btn.disabled = mode === 'layer';
+          btn.addEventListener('click', () => {
+            if (u === mode) return;
+            if (u === 'px') setAnchor(toLocalPx(), true, true);
+            else {
+              const p = anchorLocalPoint(layer, anchor);
+              const bx = layerLocalBounds(layer) ?? { x: 0, y: 0, width: 1, height: 1 };
+              setAnchor({ x: round2(bx.width ? (p.x - bx.x) / bx.width : 0.5), y: round2(bx.height ? (p.y - bx.y) / bx.height : 0.5) }, true, true);
+            }
+          });
+          unit.appendChild(btn);
+        }
+        card.appendChild(el('div', { class: 'slt-row' }, [el('label', {}, ['Given as']), unit]));
+        const others = anchorAttachable(ed.document, layer.id);
+        const attachOptions = [{ value: '', label: 'Nothing (its own)' }, ...others.map((l) => ({ value: l.id, label: `${l.name || l.id} · its centre` }))];
+        const attach = select(anchor.layer && others.some((l) => l.id === anchor.layer) ? anchor.layer : '', attachOptions, (id) => {
+          if (id) setAnchor({ x: 0, y: 0, layer: id }, true, true);
+          else setAnchor(toLocalPx(), true, true);
+        });
+        attach.classList.add('slt-grow');
+        card.appendChild(el('div', { class: 'slt-row' }, [el('label', {}, ['Attach to']), attach]));
+        if (mode === 'layer') {
+          const other = others.find((l) => l.id === anchor.layer);
+          const c = other ? layerCentreWorld(ed.resolvedDocument(), other.id) : null;
+          card.appendChild(el('div', { class: 'slt-hint' }, [other && c
+            ? `Follows ${other.name || other.id} wherever it goes; X and Y move the ${what.toLowerCase()} away from its centre (in the drawing's units).`
+            : 'The layer it was attached to is gone: it uses its own centre. Attach it to another, or pick Nothing.']));
+        }
+      }
+      card.appendChild(el('div', { class: 'slt-hint' }, [mode === 'box'
+        ? '0 % is the left/top of the layer box, 100 % the right/bottom. Drag the marker on the canvas while this tab is open.'
+        : 'Drag the marker on the canvas while this tab is open.']));
     }
     if (!b.enabled) card.dataset.disabled = '';
     return card;
   }
 }
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function updateLayerIn(doc: SvgDocument, id: string, fn: (l: Layer) => Layer): SvgDocument {
   return updateLayer(doc, id, fn);

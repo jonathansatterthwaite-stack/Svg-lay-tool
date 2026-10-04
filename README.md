@@ -181,6 +181,23 @@ bottom of its window (height with `y: 1`), a group scales about a corner.
 Pick a preset or drag the marker on the canvas while the Variables tab is
 open (Shift snaps to edges and centre).
 
+A turning or scaling point (rotation and scale bindings) can also be:
+
+- **in pixels**, `anchor: { x: 0, y: -80, unit: 'px' }`: the layer's own
+  coordinates from its origin (a shape's middle), so it can sit anywhere, such
+  as a pendulum's pivot above the bob;
+- **attached to another layer**, `anchor: { x: 0, y: 0, layer: '<id>' }`: that
+  layer's centre plus an offset in the drawing's units, following it wherever
+  its own bindings move it (a lid hinged on a moving box, a hand on a clock's
+  pin). Attachments aren't chained (an attached layer's own attached anchors
+  aren't followed), so they can't loop; a missing layer falls back to the
+  centre.
+
+In the Variables tab, **Given as** switches between *of its box* and *pixels*,
+and **Attach to** picks a layer (*Nothing* detaches, keeping the point where it
+is). A size binding's fixed edge stays a fraction (`anchorUnits(target)`).
+Helpers: `anchorWorldPoint`, `layerCentreWorld`, `anchorAttachable`.
+
 Bindable targets: `x`, `y`, `rotation`, `opacity`, `visible`, shape `width`
 and `height`, group `scale`, shape `params.<key>`, and every numeric field or
 `enabled` flag of a modifier (`modifiers.<id>.<field>`), so a mask, an effect

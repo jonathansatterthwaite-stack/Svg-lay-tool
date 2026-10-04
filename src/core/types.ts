@@ -272,12 +272,29 @@ export interface Binding {
   expression: string;
   enabled: boolean;
   /**
-   * Reference point for rotation, size and scale bindings, as fractions of
-   * the layer's box (0,0 = top-left, 0.5,0.5 = centre, 1,1 = bottom-right).
-   * Rotation turns about it; a height binding grows away from it; a scale
-   * binding scales about it. Default centre.
+   * Reference point for rotation, size and scale bindings. Rotation turns
+   * about it; a height binding grows away from it; a scale binding scales
+   * about it. Default centre. See BindingAnchor.
    */
-  anchor?: { x: number; y: number };
+  anchor?: BindingAnchor;
+}
+
+/**
+ * Where a binding's reference point is:
+ * - `{ x, y }`: fractions of the layer's box (0,0 = top-left, 0.5,0.5 = centre,
+ *   1,1 = bottom-right; outside 0..1 is outside the box);
+ * and, for rotation and scale only (see anchorUnits):
+ * - `{ x, y, unit: 'px' }`: the layer's own coordinates, from its origin (a
+ *   shape's middle, a group's pivot), so it can sit anywhere;
+ * - `{ x, y, layer }`: on another layer's centre, offset by x, y in the
+ *   drawing's units, following that layer wherever it goes (its position after
+ *   its own bindings; anchors of its own that are attached are not followed).
+ */
+export interface BindingAnchor {
+  x: number;
+  y: number;
+  unit?: 'px';
+  layer?: string;
 }
 
 /** 2×2 linear map (no translation): [a c; b d]. */

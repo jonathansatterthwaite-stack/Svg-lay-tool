@@ -220,6 +220,7 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-rotate-label { fill: var(--_slt-text); font: 600 12px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; }
 .slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; opacity: var(--_slt-marker-op, 1); }
+.slt-overlay .slt-anchor-link { stroke: var(--_slt-accent); stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor-label { fill: var(--_slt-text); font: 600 11px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-marquee { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 4 3; }
@@ -391,6 +392,7 @@ input.slt-gray-range { background: linear-gradient(90deg, #000, #fff); border-ra
 .slt-anchor-preset { width: 12px; height: 12px; padding: 0; border: 1px solid var(--_slt-muted); border-radius: 50%; background: transparent; cursor: pointer; }
 .slt-anchor-preset:hover { border-color: var(--_slt-accent); }
 .slt-anchor-preset[data-active] { background: var(--_slt-accent); border-color: var(--_slt-accent); }
+.slt-anchor-unit button:disabled { opacity: 0.5; cursor: default; }
 .slt-fx { color: var(--_slt-accent); font-weight: 700; font-style: italic; width: 14px; flex: none; }
 .slt-binding-expr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .slt-binding-result { display: block; font-size: 11px; color: var(--_slt-muted); padding: 0 0 2px 20px; font-variant-numeric: tabular-nums; }

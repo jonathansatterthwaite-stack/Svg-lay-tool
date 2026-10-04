@@ -5,10 +5,10 @@
  */
 import { evaluate, referencedNames, type Env } from './expr';
 import { createId } from './ids';
-import { layerLinear, layerLocalBounds, rotateLayer } from './document';
-import { applyToVector } from './matrix';
+import { findLayer, layerLinear, layerLocalBounds, layerLocalMatrix, layerWorldMatrix, parentWorldMatrix, rotateLayer } from './document';
+import { applyToPoint, applyToVector, invert, multiply } from './matrix';
 import { MODIFIER_DEFS } from './modifiers';
-import type { Binding, Layer, Modifier, SvgDocument, Variable } from './types';
+import type { Binding, BindingAnchor, Layer, Modifier, Point, SvgDocument, Variable } from './types';
 
 export const TIME_VARIABLES: { name: string; label: string }[] = [
   { name: 'hours', label: 'Hour of day, 0–23 (whole)' },
@@ -54,7 +54,7 @@ export function createVariable(init: Partial<Variable> = {}): Variable {
   return { id: createId('v'), name: 'value', value: 0.5, min: 0, max: 1, step: 0.01, ...init };
 }
 
-export function createBinding(target: string, expression: string, anchor?: { x: number; y: number }): Binding {
+export function createBinding(target: string, expression: string, anchor?: BindingAnchor): Binding {
   return { id: createId('b'), target, expression, enabled: true, ...(anchor ? { anchor } : {}) };
 }
 
@@ -73,10 +73,62 @@ export function anchorAxes(target: string): 'xy' | 'x' | 'y' | null {
   }
 }
 
-/** The anchor as a point in the layer's local (pre-transform) coordinates. */
-export function anchorLocalPoint(layer: Layer, anchor: { x: number; y: number } = { x: 0.5, y: 0.5 }): { x: number; y: number } {
+/**
+ * Whether a target's anchor may be in pixels or attached to another layer: a
+ * turning or scaling point can be anywhere; a size binding's fixed edge stays
+ * a fraction of the box (an edge moves as the size changes).
+ */
+export function anchorUnits(target: string): boolean {
+  return anchorAxes(target) === 'xy';
+}
+
+/**
+ * The anchor as a point in the layer's local (pre-transform) coordinates. An
+ * anchor attached to another layer needs the document: see anchorWorldPoint
+ * (here it falls back to the centre).
+ */
+export function anchorLocalPoint(layer: Layer, anchor: BindingAnchor = { x: 0.5, y: 0.5 }): Point {
+  if (anchor.unit === 'px' && !anchor.layer) return { x: anchor.x, y: anchor.y };
   const b = layerLocalBounds(layer) ?? { x: 0, y: 0, width: 0, height: 0 };
-  return { x: b.x + b.width * anchor.x, y: b.y + b.height * anchor.y };
+  const a = anchor.layer ? { x: 0.5, y: 0.5 } : anchor;
+  return { x: b.x + b.width * a.x, y: b.y + b.height * a.y };
+}
+
+/** The world point of a layer's centre (its box's middle), or null when there's no such layer. */
+export function layerCentreWorld(doc: SvgDocument, id: string): Point | null {
+  const l = findLayer(doc, id);
+  if (!l) return null;
+  const b = layerLocalBounds(l) ?? { x: 0, y: 0, width: 0, height: 0 };
+  return applyToPoint(layerWorldMatrix(doc, id), { x: b.x + b.width / 2, y: b.y + b.height / 2 });
+}
+
+/**
+ * The anchor of `layerId`'s binding as a world point. `doc` gives the layer
+ * (unresolved, as the editor stores it); `positions` gives where attached-to
+ * layers are (a resolved document, by default the same one).
+ */
+export function anchorWorldPoint(doc: SvgDocument, layerId: string, anchor: BindingAnchor | undefined, positions: SvgDocument = doc): Point | null {
+  const layer = findLayer(doc, layerId);
+  if (!layer) return null;
+  if (anchor?.layer) {
+    const c = layerCentreWorld(positions, anchor.layer);
+    if (c) return { x: c.x + anchor.x, y: c.y + anchor.y };
+  }
+  return applyToPoint(layerWorldMatrix(doc, layerId), anchorLocalPoint(layer, anchor));
+}
+
+/** Layer ids a binding anchor may be attached to: any other layer, not the layer itself or inside it. */
+export function anchorAttachable(doc: SvgDocument, layerId: string): Layer[] {
+  const out: Layer[] = [];
+  const walk = (layers: Layer[], inside: boolean) => {
+    for (const l of layers) {
+      const own = inside || l.id === layerId;
+      if (!own) out.push(l);
+      if (l.type === 'group') walk(l.children, own);
+    }
+  };
+  walk(doc.layers, false);
+  return out;
 }
 
 /** Move a layer so that the local point `p` (of `before`) stays at the same parent position in `after`. */
@@ -166,7 +218,7 @@ export function bindableTargets(layer: Layer): BindableTarget[] {
  * rotation, size and scale the optional anchor (box fractions) is the point
  * that stays put.
  */
-export function applyBoundValue(layer: Layer, target: string, value: number, anchor?: { x: number; y: number }): Layer {
+export function applyBoundValue(layer: Layer, target: string, value: number, anchor?: BindingAnchor): Layer {
   const a = anchor ?? { x: 0.5, y: 0.5 };
   if (target === 'rotation') {
     const p = anchorLocalPoint(layer, a);
@@ -239,18 +291,56 @@ export function resolveDocument(
   errors?: BindingError[],
 ): SvgDocument {
   if (!documentHasBindings(doc)) return doc;
+  // Anchors attached to other layers follow where those layers are once their
+  // own bindings have run: a first pass finds that (attached anchors at their
+  // centres), the second uses it. Two passes, so attachments can't loop.
+  const attached = documentHasAttachedAnchors(doc);
+  const positions = attached ? resolveDocument(withoutAttachedAnchors(doc), env) : null;
   const walk = (layers: Layer[]): Layer[] =>
     layers.map((l) => {
       let out: Layer = l.type === 'group' ? { ...l, children: walk(l.children) } : l;
       for (const b of l.bindings ?? []) {
         if (!b.enabled || !b.expression.trim()) continue;
         try {
-          out = applyBoundValue(out, b.target, evaluate(b.expression, env), b.anchor);
+          let anchor = b.anchor;
+          if (anchor?.layer && positions) {
+            // The attached point, in this layer's own coordinates as it is now.
+            const c = layerCentreWorld(positions, anchor.layer);
+            if (c) {
+              const toLocal = invert(multiply(parentWorldMatrix(positions, l.id), layerLocalMatrix(out)));
+              const p = applyToPoint(toLocal, { x: c.x + anchor.x, y: c.y + anchor.y });
+              anchor = { x: p.x, y: p.y, unit: 'px' };
+            }
+          }
+          out = applyBoundValue(out, b.target, evaluate(b.expression, env), anchor);
         } catch (err) {
           errors?.push({ layerId: l.id, bindingId: b.id, message: err instanceof Error ? err.message : String(err) });
         }
       }
       return out;
+    });
+  return { ...doc, layers: walk(doc.layers) };
+}
+
+function documentHasAttachedAnchors(doc: SvgDocument): boolean {
+  let found = false;
+  const walk = (layers: Layer[]) => {
+    for (const l of layers) {
+      if (found) return;
+      if (l.bindings?.some((b) => b.enabled && b.anchor?.layer)) found = true;
+      else if (l.type === 'group') walk(l.children);
+    }
+  };
+  walk(doc.layers);
+  return found;
+}
+
+function withoutAttachedAnchors(doc: SvgDocument): SvgDocument {
+  const walk = (layers: Layer[]): Layer[] =>
+    layers.map((l) => {
+      const bindings = l.bindings?.map((b) => (b.anchor?.layer ? { ...b, anchor: undefined } : b));
+      const out = bindings ? { ...l, bindings } : l;
+      return out.type === 'group' ? { ...out, children: walk(out.children) } : out;
     });
   return { ...doc, layers: walk(doc.layers) };
 }

@@ -2,7 +2,8 @@ import {
   applyToPoint,
   applyToVector,
   anchorAxes,
-  anchorLocalPoint,
+  anchorWorldPoint,
+  layerCentreWorld,
   layerWorldMatrix,
   layerLocalBounds,
   setBinding,
@@ -66,7 +67,7 @@ type DragState =
   | { kind: 'pan'; startScreen: Point; startPan: Point }
   | { kind: 'pinch'; startDist: number; startZoom: number; startPan: Point; startMid: Point }
   | { kind: 'press'; startScreen: Point; deepId: string | null; timer: ReturnType<typeof setTimeout> }
-  | { kind: 'anchor'; id: string; bindingId: string; localInv: Mat; box: Rect }
+  | { kind: 'anchor'; id: string; bindingId: string; localInv: Mat; box: Rect; mode: 'box' | 'px' | 'layer'; centre: Point | null }
   /** Preview: a press on a hotspot, handed to the editor's interaction. */
   | { kind: 'interact' };
 
@@ -553,19 +554,30 @@ export class CanvasView {
     const doc = this.editor.document;
     const layer = findLayer(doc, id);
     if (!layer) return;
-    const world = layerWorldMatrix(doc, id);
+    const resolved = this.editor.resolvedDocument();
     for (const b of layer.bindings ?? []) {
       const axes = anchorAxes(b.target);
       if (!axes || !b.enabled) continue;
-      const p = this.worldToScreen(applyToPoint(world, anchorLocalPoint(layer, b.anchor)));
+      const w = anchorWorldPoint(doc, id, b.anchor, resolved);
+      if (!w) continue;
+      const p = this.worldToScreen(w);
       const r = this.coarse ? 10 : 6;
+      const on = b.anchor?.layer ? findLayer(doc, b.anchor.layer) : null;
+      if (on) {
+        // attached: a dashed line to the other layer's centre when it's offset from it
+        const c = layerCentreWorld(resolved, on.id);
+        if (c && (b.anchor!.x || b.anchor!.y)) {
+          const cs = this.worldToScreen(c);
+          this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-link', x1: cs.x, y1: cs.y, x2: p.x, y2: p.y }));
+        }
+      }
       this.overlay.appendChild(svgEl('circle', { class: 'slt-anchor-ring', cx: p.x, cy: p.y, r: r + 5 }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x - r - 9, y1: p.y, x2: p.x + r + 9, y2: p.y }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x, y1: p.y - r - 9, x2: p.x, y2: p.y + r + 9 }));
       this.overlay.appendChild(svgEl('circle', { class: 'slt-anchor', cx: p.x, cy: p.y, r, 'data-handle': `anchor:${b.id}` }));
       const reach = this.editor.preferences.touchArea;
       if (reach > 0) this.overlay.appendChild(svgEl('circle', { class: 'slt-hit', cx: p.x, cy: p.y, r: r + reach, 'data-handle': `anchor:${b.id}`, style: 'cursor:move' }));
-      const label = b.target === 'rotation' ? 'pivot' : b.target === 'scale' ? 'scale about' : `${b.target} from`;
+      const label = (b.target === 'rotation' ? 'pivot' : b.target === 'scale' ? 'scale about' : `${b.target} from`) + (on ? ` · on ${on.name || on.id}` : '');
       this.overlay.appendChild(svgEl('text', { class: 'slt-anchor-label', x: p.x + r + 12, y: p.y - 6 }, [label]));
     }
   }
@@ -758,8 +770,11 @@ export class CanvasView {
     const layer = findLayer(doc, id);
     const box = layer ? layerLocalBounds(layer) : null;
     if (!layer || !box) return;
+    const anchor = layer.bindings?.find((b) => b.id === bindingId)?.anchor;
+    const centre = anchor?.layer ? layerCentreWorld(this.editor.resolvedDocument(), anchor.layer) : null;
+    const mode = anchor?.layer ? (centre ? 'layer' : 'box') : anchor?.unit === 'px' ? 'px' : 'box';
     this.editor.store.beginTransaction();
-    this.drag = { kind: 'anchor', id, bindingId, localInv: invert(layerWorldMatrix(doc, id)), box };
+    this.drag = { kind: 'anchor', id, bindingId, localInv: invert(layerWorldMatrix(doc, id)), box, mode, centre };
   }
 
   private startHandleDrag(handle: string, screen: Point): void {
@@ -862,6 +877,20 @@ export class CanvasView {
         break;
       }
       case 'anchor': {
+        if (d.mode !== 'box') {
+          // Pixels: the layer's own coordinates; attached: the offset from the other layer's centre.
+          const world = this.screenToWorld(screen);
+          const p = d.mode === 'layer' && d.centre ? { x: world.x - d.centre.x, y: world.y - d.centre.y } : applyToPoint(d.localInv, world);
+          const snap = (n: number) => (e.shiftKey ? Math.round(n) : Math.round(n * 10) / 10);
+          const next = { x: snap(p.x), y: snap(p.y) };
+          this.editor.store.update((doc) =>
+            updateLayer(doc, d.id, (l) => {
+              const b = (l.bindings ?? []).find((x) => x.id === d.bindingId);
+              return b?.anchor ? setBinding(l, { ...b, anchor: { ...b.anchor, ...next } }) : l;
+            }),
+          );
+          break;
+        }
         // Pointer → the layer's local space → box fractions.
         const local = applyToPoint(d.localInv, this.screenToWorld(screen));
         let fx = d.box.width > 1e-9 ? (local.x - d.box.x) / d.box.width : 0.5;

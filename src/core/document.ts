@@ -14,7 +14,7 @@ import {
 import { EFFECT_DEFS } from './effects';
 import { MODIFIER_DEFS, createModifier } from './modifiers';
 import { defaultShapeParams, getShape, resolveShapeAlias } from './shapes';
-import type { Action, Binding, Effect, Fill, Gesture, GestureType, GridSettings, GroupLayer, Hotspot, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SoundAsset, SvgDocument, Variable } from './types';
+import type { Action, Binding, BindingAnchor, Effect, Fill, Gesture, GestureType, GridSettings, GroupLayer, Hotspot, Layer, Mat2, MaskSettings, Modifier, Rect, ShapeLayer, SoundAsset, SvgDocument, Variable } from './types';
 
 // ---------------------------------------------------------------------------
 // Creation
@@ -731,12 +731,17 @@ function normalizeBinding(input: unknown): Binding | null {
   if (typeof raw.target !== 'string' || typeof raw.expression !== 'string') return null;
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const rawAnchor = raw.anchor as Record<string, unknown> | undefined;
+  const anchor = (a: Record<string, unknown>): BindingAnchor => {
+    if (typeof a.layer === 'string' && a.layer) return { x: num(a.x, 0), y: num(a.y, 0), layer: a.layer };
+    if (a.unit === 'px') return { x: num(a.x, 0), y: num(a.y, 0), unit: 'px' };
+    return { x: num(a.x, 0.5), y: num(a.y, 0.5) };
+  };
   return {
     id: typeof raw.id === 'string' ? raw.id : createId('b'),
     target: raw.target,
     expression: raw.expression,
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
-    ...(rawAnchor && typeof rawAnchor === 'object' ? { anchor: { x: num(rawAnchor.x, 0.5), y: num(rawAnchor.y, 0.5) } } : {}),
+    ...(rawAnchor && typeof rawAnchor === 'object' ? { anchor: anchor(rawAnchor) } : {}),
   };
 }
 
