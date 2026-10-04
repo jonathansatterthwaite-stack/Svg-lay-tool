@@ -767,10 +767,11 @@ export class CanvasView {
         const value = v.min + ((v.max - v.min) * k) / steps;
         const env = documentEnv(ed.document, { ...over, [v.name]: value });
         const doc = resolveDocument(ed.document, env);
+        // the layer's own box, turned and scaled as it is at that value
         const l = findLayer(doc, id);
-        const box = l ? layerFrameBounds(l) : null;
+        const box = l ? layerLocalBounds(l) : null;
         if (!l || !box) continue;
-        const m = multiply(parentWorldMatrix(doc, id), layerFrameMatrix(l));
+        const m = layerWorldMatrix(doc, id);
         polys.push(rectCorners(box).map((p) => applyToPoint(m, p)));
       }
       this.trailCache = { doc: ed.document, key, polys };
