@@ -199,24 +199,90 @@ export const EDITOR_STYLES = `
 .slt-stage [data-ghost] { cursor: pointer; }
 .slt-doc-frame { fill: none; stroke: var(--_slt-border); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
 .slt-overlay { pointer-events: none; }
-.slt-overlay .slt-sel-outline { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; }
+.slt-overlay .slt-sel-outline { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; opacity: var(--_slt-handle-op, 1); }
 .slt-overlay .slt-hover-outline { fill: none; stroke: var(--_slt-accent); stroke-width: 1; opacity: 0.6; stroke-dasharray: 4 3; }
-.slt-overlay .slt-handle { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; }
-.slt-overlay .slt-handle-rotate { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; cursor: grab; }
-.slt-overlay .slt-handle-active { fill: var(--_slt-accent); stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 4px var(--_slt-accent)); }
+.slt-overlay .slt-handle { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; opacity: var(--_slt-handle-op, 1); }
+.slt-overlay .slt-handle-rotate { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: all; cursor: grab; opacity: var(--_slt-handle-op, 1); }
+.slt-overlay .slt-handle-active { fill: var(--_slt-accent); stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 4px var(--_slt-accent)); opacity: 1; }
+/* invisible, larger catch areas around handles (Preferences: Touch area) */
+.slt-overlay .slt-hit { fill: transparent; stroke: none; pointer-events: all; }
+/* the move handle: always at full strength, it's the thing to grab */
+.slt-overlay .slt-move-handle { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35)); }
+.slt-overlay .slt-move-active { filter: drop-shadow(0 0 5px var(--_slt-accent)); }
+.slt-overlay .slt-move-arrows { fill: var(--_slt-accent-text); stroke: var(--_slt-accent-text); stroke-width: 1.4; stroke-linejoin: round; }
+.slt-overlay .slt-move-link { stroke: var(--_slt-accent); stroke-width: 1.2; stroke-dasharray: 2 3; opacity: var(--_slt-handle-op, 1); }
 .slt-overlay .slt-lifted { stroke-width: 3; stroke-dasharray: none; filter: drop-shadow(0 0 6px var(--_slt-accent)); }
 .slt-overlay .slt-press-ring { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 2; opacity: 0; animation: slt-press 0.6s linear forwards; }
 @keyframes slt-press { from { opacity: 0; transform: none; } 30% { opacity: 0.6; } to { opacity: 1; } }
 .slt-overlay .slt-rotate-line { stroke: var(--_slt-accent); stroke-width: 1; }
-.slt-overlay .slt-rotate-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: 0.55; }
+.slt-overlay .slt-rotate-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 3 4; opacity: calc(0.55 * var(--_slt-handle-op, 1)); }
 .slt-overlay .slt-rotate-ring-active { stroke-dasharray: none; opacity: 0.9; }
 .slt-overlay .slt-rotate-label { fill: var(--_slt-text); font: 600 12px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; }
-.slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; }
-.slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; }
-.slt-overlay .slt-anchor-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: none; }
-.slt-overlay .slt-anchor-label { fill: var(--_slt-text); font: 600 11px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; pointer-events: none; }
+.slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; opacity: var(--_slt-marker-op, 1); }
+.slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; opacity: var(--_slt-marker-op, 1); }
+.slt-overlay .slt-anchor-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
+.slt-overlay .slt-anchor-label { fill: var(--_slt-text); font: 600 11px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-marquee { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .slt-canvas-hint { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--_slt-muted); pointer-events: none; }
+.slt-pad-left .slt-canvas-hint { display: none; }
+.slt-btn.slt-on { color: var(--_slt-accent); background: var(--_slt-selected); }
+
+/* The view pad (over the canvas) */
+.slt-viewpad { position: absolute; bottom: 10px; right: 10px; display: flex; align-items: center; gap: 6px; padding: 6px; background: var(--_slt-panel); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); touch-action: none; user-select: none; -webkit-user-select: none; }
+.slt-viewpad[data-side="left"] { right: auto; left: 10px; }
+.slt-viewpad[hidden], .slt-toolbar [hidden] { display: none !important; }
+.slt-viewpad-disc { position: relative; width: 76px; height: 76px; border-radius: 50%; background: var(--_slt-panel-2); border: 1px solid var(--_slt-border); cursor: grab; flex: none; }
+.slt-viewpad-disc[data-active] { cursor: grabbing; }
+.slt-viewpad-knob { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; border-radius: 50%; background: var(--_slt-accent); opacity: 0.85; pointer-events: none; }
+.slt-viewpad-arrow { position: absolute; width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--_slt-muted); cursor: pointer; }
+.slt-viewpad-arrow:hover { color: var(--_slt-text); background: var(--_slt-hover); }
+.slt-viewpad-arrow .slt-icon svg { width: 13px; height: 13px; }
+.slt-viewpad-n { left: 26px; top: 1px; } .slt-viewpad-s { left: 26px; bottom: 1px; }
+.slt-viewpad-w { left: 1px; top: 26px; transform: rotate(180deg); } .slt-viewpad-e { right: 1px; top: 26px; }
+.slt-viewpad-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.slt-viewpad-btn { min-width: 26px; height: 22px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--_slt-border); border-radius: 6px; background: var(--_slt-panel); color: var(--_slt-text); font: 600 10px var(--_slt-font); cursor: pointer; }
+.slt-viewpad-btn:hover { background: var(--_slt-hover); }
+.slt-viewpad-btn .slt-icon svg { width: 13px; height: 13px; }
+input.slt-viewpad-zoom { writing-mode: vertical-lr; direction: rtl; width: 18px; height: 50px; margin: 0; accent-color: var(--_slt-accent); }
+
+/* Preferences */
+.slt-prefs-backdrop { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+.slt-prefs { width: min(640px, calc(100% - 24px)); max-height: calc(100% - 24px); display: flex; flex-direction: column; background: var(--_slt-panel); color: var(--_slt-text); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); overflow: hidden; }
+.slt-prefs-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--_slt-border); }
+.slt-prefs-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+.slt-prefs-main { display: flex; min-height: 0; flex: 1; }
+.slt-prefs-nav { display: flex; flex-direction: column; gap: 2px; padding: 8px; border-right: 1px solid var(--_slt-border); flex: 0 0 150px; }
+.slt-prefs-tab { text-align: left; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--_slt-text); font: inherit; cursor: pointer; }
+.slt-prefs-tab:hover { background: var(--_slt-hover); }
+.slt-prefs-tab[data-active] { background: var(--_slt-selected); color: var(--_slt-accent); font-weight: 600; }
+.slt-prefs-body { flex: 1; min-width: 0; overflow: auto; padding: 4px 16px 14px; }
+.slt-prefs-body h4 { margin: 12px 0 2px; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--_slt-muted); }
+.slt-prefs-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--_slt-border); }
+.slt-prefs-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.slt-prefs-label small { color: var(--_slt-muted); font-size: 11px; line-height: 1.3; }
+.slt-prefs-slider { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; width: 200px; }
+.slt-prefs-value { min-width: 70px; text-align: right; color: var(--_slt-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.slt-seg { display: inline-flex; flex: none; border: 1px solid var(--_slt-border); border-radius: 7px; overflow: hidden; }
+.slt-seg button { padding: 4px 9px; border: 0; background: transparent; color: var(--_slt-text); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.slt-seg button + button { border-left: 1px solid var(--_slt-border); }
+.slt-seg button[data-active] { background: var(--_slt-accent); color: var(--_slt-accent-text); }
+.slt-prefs-preview-slot { margin-top: 10px; }
+.slt-prefs-preview { display: block; width: 100%; height: 84px; border-radius: 8px; background: var(--_slt-canvas); border: 1px solid var(--_slt-border); }
+.slt-prefs-preview-shape { fill: var(--_slt-muted); opacity: 0.35; }
+.slt-prefs-preview-box { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; }
+.slt-prefs-preview-handle { fill: #fff; stroke: var(--_slt-accent); stroke-width: 1.5; }
+.slt-prefs-preview .slt-move-handle { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; }
+.slt-prefs-preview .slt-move-arrows { fill: var(--_slt-accent-text); stroke: var(--_slt-accent-text); stroke-width: 1.4; }
+.slt-prefs-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--_slt-border); }
+.slt-prefs-foot .slt-spacer { flex: 1; }
+/* On a phone: a sheet from the bottom, the pages as chips */
+.slt-root[data-layout="mobile"] .slt-prefs-backdrop { align-items: flex-end; }
+.slt-root[data-layout="mobile"] .slt-prefs { width: 100%; max-height: 88%; border-radius: 16px 16px 0 0; }
+.slt-root[data-layout="mobile"] .slt-prefs-main { flex-direction: column; }
+.slt-root[data-layout="mobile"] .slt-prefs-nav { flex: none; flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--_slt-border); }
+.slt-root[data-layout="mobile"] .slt-prefs-tab { white-space: nowrap; border: 1px solid var(--_slt-border); border-radius: 14px; padding: 4px 10px; }
+.slt-root[data-layout="mobile"] .slt-prefs-row { flex-wrap: wrap; }
+.slt-root[data-layout="mobile"] .slt-prefs-slider { width: 100%; }
 
 .slt-side { grid-area: side; position: relative; display: flex; flex-direction: column; min-height: 0; background: var(--_slt-panel); border-left: 1px solid var(--_slt-border); }
 .slt-layers { display: flex; flex-direction: column; flex: 0 0 38%; min-height: 120px; border-bottom: 1px solid var(--_slt-border); }

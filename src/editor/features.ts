@@ -62,6 +62,8 @@ export interface EditorFeatures {
    * otherwise keyboard and mouse (with ⌘ on Apple devices).
    */
   input: 'auto' | 'touch' | 'mouse';
+  /** Show the Preferences button (handles, canvas and view pad settings). */
+  preferences: boolean;
 }
 
 export const DEFAULT_FEATURES: EditorFeatures = {
@@ -85,6 +87,7 @@ export const DEFAULT_FEATURES: EditorFeatures = {
   groupStretch: true,
   variables: true,
   input: 'auto',
+  preferences: true,
 };
 
 export function resolveFeatures(partial: Partial<EditorFeatures> = {}): EditorFeatures {

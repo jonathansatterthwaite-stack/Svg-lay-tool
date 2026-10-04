@@ -1,6 +1,7 @@
 export { SvgLayEditor, type EditorOptions, type EditorEvents, type ViewState, type MobileTab, type AppVariable, type VariableGroup, type VariablePreset, type PanelWidths } from './editor';
 export { SvgLayEditorElement, defineSvgLayEditor } from './element';
 export { EDITOR_STYLES } from './styles';
+export { DEFAULT_PREFERENCES, resolvePreferences, type EditorPreferences } from './preferences';
 export {
   DEFAULT_FEATURES,
   THEME_TOKENS,

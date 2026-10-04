@@ -21,6 +21,7 @@ export class Toolbar {
     const ed = editor;
     const b = (key: string, ic: IconName, title: string, fn: () => void, label?: string) => {
       const btn = button(label ? [icon(ic), label] : icon(ic), fn, { title, cls: label ? '' : 'slt-icon-only' });
+      btn.dataset.key = key;
       this.buttons.set(key, btn);
       return btn;
     };
@@ -62,6 +63,10 @@ export class Toolbar {
       this.zoomLabel,
       b('zoomIn', 'zoomIn', tip('zoomIn', 'Zoom in', 'Mod+='), () => ed.zoomBy(1.25)),
       b('fit', 'fit', tip('fit', 'Fit to view', 'Mod+0'), () => ed.fitToView()),
+      b('zoomSel', 'target', tip('zoomSel', 'Zoom to the selection', 'F'), () => ed.zoomToSelection()),
+      b('lockView', 'unlock', 'Lock the view: the canvas never pans or zooms by touch, drag or scroll (the pad and these buttons still do)',
+        () => ed.setPreferences({ lockView: !ed.preferences.lockView })),
+      b('prefs', 'gear', 'Preferences', () => ed.openPreferences()),
       sep(),
       this.menu,
     ]);
@@ -95,6 +100,19 @@ export class Toolbar {
     set('undo', ed.store.canUndo);
     set('redo', ed.store.canRedo);
     this.menu.style.display = ed.features.export ? '' : 'none';
+    const lock = this.buttons.get('lockView');
+    if (lock) {
+      const on = ed.preferences.lockView;
+      lock.replaceChildren(icon(on ? 'lock' : 'unlock'));
+      lock.setAttribute('aria-pressed', on ? 'true' : 'false');
+      lock.classList.toggle('slt-on', on);
+    }
+    // On a phone the view pad has the zoom and fit buttons: leave room for the rest.
+    const padZoom = ed.layout === 'mobile' && ed.viewPadShown();
+    for (const k of ['zoomOut', 'zoomIn', 'fit', 'zoomSel']) this.buttons.get(k)?.toggleAttribute('hidden', padZoom);
+    this.zoomLabel.hidden = padZoom;
+    const prefs = this.buttons.get('prefs');
+    if (prefs) prefs.style.display = ed.features.preferences ? '' : 'none';
     this.zoomLabel.textContent = `${Math.round(ed.view.zoom * 100)}%`;
     this.previewToggle.checked = ed.preview;
     this.snapToggle.checked = ed.snap;

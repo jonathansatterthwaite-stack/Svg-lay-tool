@@ -29,6 +29,8 @@ import {
 } from '../core';
 import { clear, el, svgEl } from './dom';
 import type { SvgLayEditor } from './editor';
+import { icon } from './icons';
+import { moveArrows } from './preferences';
 
 type HandleDir = { hx: -1 | 0 | 1; hy: -1 | 0 | 1 };
 
@@ -93,7 +95,12 @@ export class CanvasView {
   private gridRect: SVGRectElement;
   private overlay: SVGGElement;
   private hint: HTMLDivElement;
+  private pad: HTMLDivElement;
+  private padKnob: HTMLSpanElement;
+  private padZoom: HTMLInputElement;
   private drag: DragState | null = null;
+  /** The pointer type of the press in progress (touch rules differ: see EditorPreferences.canvasTouch). */
+  private pointerType = 'mouse';
   private pointers = new Map<number, Point>();
   private coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private spaceDown = false;
@@ -123,7 +130,10 @@ export class CanvasView {
     this.stage = svgEl('svg', { class: 'slt-stage' }, [this.staticDefs, this.docDefs, this.viewG, this.overlay]);
     this.hint = el('div', { class: 'slt-canvas-hint' }, ['Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan']);
     this.stripSlot = el('div', { class: 'slt-strip-slot' });
-    this.stageWrap = el('div', { class: 'slt-stage-wrap' }, [this.stage, this.hint]);
+    this.padKnob = el('span', { class: 'slt-viewpad-knob' });
+    this.padZoom = el('input', { class: 'slt-viewpad-zoom', type: 'range', min: -4.3, max: 5, step: 0.01, value: 0, 'aria-label': 'Zoom' });
+    this.pad = this.buildPad();
+    this.stageWrap = el('div', { class: 'slt-stage-wrap' }, [this.stage, this.hint, this.pad]);
     this.el = el('div', { class: 'slt-canvas', tabindex: 0 }, [this.stripSlot, this.stageWrap]);
 
     this.bind();
@@ -202,7 +212,13 @@ export class CanvasView {
   updateHint(): void {
     const hold = this.editor.features.canvasInteraction === 'hold';
     const mod = this.editor.modKey();
-    if (this.editor.inputMode() === 'touch') {
+    const p = this.editor.preferences;
+    this.updatePad();
+    if (p.lockView) {
+      this.hint.textContent = 'The view is locked: the pad and the toolbar still move it';
+    } else if (this.editor.inputMode() === 'touch' && p.canvasTouch === 'pad') {
+      this.hint.textContent = 'The pad moves the view · pinch to zoom · drag the ✥ handle to move a layer';
+    } else if (this.editor.inputMode() === 'touch') {
       this.hint.textContent = hold
         ? 'Drag to pan · pinch to zoom · hold a layer to pick it up'
         : 'Drag the selected layer to move it · drag elsewhere to pan · pinch to zoom';
@@ -239,12 +255,119 @@ export class CanvasView {
     this.editor.viewChanged();
   }
 
+  /** Zoom and pan so a world rectangle fills the view (with a margin; at most 8×). */
+  fitRect(r: Rect): void {
+    const w = this.stageWrap.clientWidth || 800;
+    const h = this.stageWrap.clientHeight || 600;
+    const margin = 48;
+    const zoom = Math.max(0.05, Math.min(8, (w - margin * 2) / Math.max(r.width, 1), (h - margin * 2) / Math.max(r.height, 1)));
+    const v = this.view;
+    v.zoom = zoom;
+    v.panX = w / 2 - (r.x + r.width / 2) * zoom;
+    v.panY = h / 2 - (r.y + r.height / 2) * zoom;
+    this.render();
+    this.editor.viewChanged();
+  }
+
+  /** The preferences changed: handles, the hint and the pad follow. */
+  preferencesChanged(): void {
+    const p = this.editor.preferences;
+    this.el.style.setProperty('--_slt-handle-op', String(p.handleOpacity));
+    this.el.style.setProperty('--_slt-marker-op', String(p.markerOpacity));
+    this.updateHint();
+    this.renderOverlay();
+  }
+
+  // -------------------------------------------------------------------------
+  // The view pad: pan by dragging its disc, zoom with its slider, fit, 1:1, zoom to the selection.
+
+  private buildPad(): HTMLDivElement {
+    const ed = this.editor;
+    const disc = el('div', { class: 'slt-viewpad-disc', title: 'Drag to move the view' }, [this.padKnob]);
+    const step = (dx: number, dy: number) => {
+      this.view.panX += dx;
+      this.view.panY += dy;
+      this.render();
+      ed.viewChanged();
+    };
+    const arrows = [['n', 0, 60, 'up'], ['s', 0, -60, 'down'], ['w', 60, 0, 'left'], ['e', -60, 0, 'right']] as const;
+    for (const [cls, dx, dy, label] of arrows) {
+      const b = el('button', { type: 'button', class: `slt-viewpad-arrow slt-viewpad-${cls}`, title: `Move the view ${label}`, 'aria-label': `Move the view ${label}` }, [icon(cls === 's' ? 'down' : cls === 'n' ? 'up' : 'chevronRight')]);
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.addEventListener('click', () => step(dx, dy));
+      disc.appendChild(b);
+    }
+    let start: { x: number; y: number; panX: number; panY: number } | null = null;
+    disc.addEventListener('pointerdown', (e) => {
+      start = { x: e.clientX, y: e.clientY, panX: this.view.panX, panY: this.view.panY };
+      disc.setPointerCapture(e.pointerId);
+      disc.dataset.active = '';
+      e.preventDefault();
+    });
+    disc.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      this.view.panX = start.panX + dx;
+      this.view.panY = start.panY + dy;
+      const k = Math.min(1, 22 / (Math.hypot(dx, dy) || 1));
+      this.padKnob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+      this.render();
+      ed.viewChanged();
+    });
+    const end = () => {
+      start = null;
+      delete disc.dataset.active;
+      this.padKnob.style.transform = '';
+    };
+    disc.addEventListener('pointerup', end);
+    disc.addEventListener('pointercancel', end);
+    this.padZoom.addEventListener('input', () => this.setZoom(2 ** Number(this.padZoom.value)));
+    const small = (content: string | HTMLElement, title: string, fn: () => void) => {
+      const b = el('button', { type: 'button', class: 'slt-viewpad-btn', title, 'aria-label': title }, [content]);
+      b.addEventListener('click', fn);
+      return b;
+    };
+    const pad = el('div', { class: 'slt-viewpad', role: 'group', 'aria-label': 'Move and zoom the view' }, [
+      disc,
+      el('div', { class: 'slt-viewpad-col' }, [
+        small(icon('plus'), 'Zoom in', () => ed.zoomBy(1.25)),
+        this.padZoom,
+        small(icon('minus'), 'Zoom out', () => ed.zoomBy(0.8)),
+      ]),
+      el('div', { class: 'slt-viewpad-col' }, [
+        small(icon('fit'), 'Fit to view', () => ed.fitToView()),
+        small('1:1', 'Actual size (100%)', () => ed.setZoom(1)),
+        small(icon('target'), 'Zoom to the selection', () => ed.zoomToSelection()),
+      ]),
+    ]);
+    // Keep presses and scrolling on the pad off the canvas underneath.
+    pad.addEventListener('pointerdown', (e) => e.stopPropagation());
+    pad.addEventListener('wheel', (e) => e.stopPropagation());
+    return pad;
+  }
+
+  private updatePad(): void {
+    const p = this.editor.preferences;
+    const show = this.editor.viewPadShown();
+    this.pad.hidden = !show;
+    this.pad.dataset.side = p.viewPad === 'left' ? 'left' : 'right';
+    this.stageWrap.classList.toggle('slt-pad-left', show && p.viewPad === 'left');
+  }
+
+  /** Whether a single pointer dragging the canvas may pan the view. */
+  private panAllowed(): boolean {
+    const p = this.editor.preferences;
+    if (p.lockView) return false;
+    return !(this.pointerType !== 'mouse' && p.canvasTouch === 'pad');
+  }
+
   // -------------------------------------------------------------------------
   // Rendering
 
   render(): void {
     const doc = this.editor.document;
     const v = this.view;
+    if (!this.padZoom.matches(':active')) this.padZoom.value = String(Math.log2(v.zoom));
     this.viewG.setAttribute('transform', `translate(${v.panX} ${v.panY}) scale(${v.zoom})`);
     const cell = 24 / v.zoom;
     this.pattern.setAttribute('width', String(cell));
@@ -332,7 +455,9 @@ export class CanvasView {
 
   private renderHandles(f: { toScreen: (p: Point) => Point; box: Rect; layer: Layer }): void {
     const { box, toScreen, layer } = f;
-    const size = this.coarse ? 16 : 8;
+    const prefs = this.editor.preferences;
+    const size = prefs.handleSize ?? (this.coarse ? 16 : 8);
+    const reachPad = prefs.touchArea;
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     // Screen angle of the frame's x axis, used to pick resize cursors.
@@ -362,10 +487,11 @@ export class CanvasView {
       const label = svgEl('text', { class: 'slt-rotate-label', x: pivot.x, y: pivot.y - ringR - 10, 'text-anchor': 'middle' }, [`${Math.round(rotDeg)}°`]);
       this.overlay.appendChild(label);
     }
-    const rr = (this.coarse ? 11 : 6) * (rotActive ? 1.4 : 1);
+    const rr = Math.max(5, size * 0.72) * (rotActive ? 1.4 : 1);
     this.overlay.appendChild(
       svgEl('circle', { class: rotActive ? 'slt-handle-rotate slt-handle-active' : 'slt-handle-rotate', cx: hp.x, cy: hp.y, r: rr, 'data-handle': 'rotate' }),
     );
+    if (reachPad > 0) this.overlay.appendChild(svgEl('circle', { class: 'slt-hit', cx: hp.x, cy: hp.y, r: rr + reachPad, 'data-handle': 'rotate', style: 'cursor:grab' }));
     if (rotating) return; // no scale handles while rotating
 
     for (const [name, dir] of Object.entries(HANDLES)) {
@@ -384,6 +510,32 @@ export class CanvasView {
         style: `cursor:${resizeCursor(handleAngle)}`,
       });
       this.overlay.appendChild(h);
+      if (reachPad > 0) {
+        const hs = sz + reachPad * 2;
+        this.overlay.appendChild(svgEl('rect', { class: 'slt-hit', x: p.x - hs / 2, y: p.y - hs / 2, width: hs, height: hs, 'data-handle': name, style: `cursor:${resizeCursor(handleAngle)}` }));
+      }
+    }
+
+    // The move handle: in the middle of the box, or beside it when the box is too small to hold it.
+    const showMove = prefs.moveHandle === 'always' || (prefs.moveHandle === 'touch' && this.editor.inputMode() === 'touch');
+    if (showMove && this.drag?.kind !== 'scale') {
+      const r = Math.max(10, size * 0.85);
+      const toward = (hx: number, hy: number) => toScreen({ x: cx + (hx * box.width) / 2, y: cy + (hy * box.height) / 2 });
+      const e = toward(1, 0), s = toward(0, 1);
+      const wS = Math.hypot(e.x - o.x, e.y - o.y) * 2, hS = Math.hypot(s.x - o.x, s.y - o.y) * 2;
+      let m = o;
+      if (wS < r * 4 || hS < r * 4) {
+        // beside the narrower side: along the frame's x axis for a tall shape, else below
+        const [ref, half] = wS <= hS ? [e, wS / 2] : [s, hS / 2];
+        const len = Math.hypot(ref.x - o.x, ref.y - o.y);
+        const u = len > 1e-6 ? { x: (ref.x - o.x) / len, y: (ref.y - o.y) / len } : wS <= hS ? { x: 1, y: 0 } : { x: 0, y: 1 };
+        m = { x: o.x + u.x * (half + r + 10), y: o.y + u.y * (half + r + 10) };
+        this.overlay.appendChild(svgEl('line', { class: 'slt-move-link', x1: o.x, y1: o.y, x2: m.x, y2: m.y }));
+      }
+      const active = this.activeHandle === 'move';
+      this.overlay.appendChild(svgEl('circle', { class: active ? 'slt-move-handle slt-move-active' : 'slt-move-handle', cx: m.x, cy: m.y, r, 'data-handle': 'move' }));
+      this.overlay.appendChild(moveArrows(m.x, m.y, r));
+      if (reachPad > 0) this.overlay.appendChild(svgEl('circle', { class: 'slt-hit', cx: m.x, cy: m.y, r: r + reachPad, 'data-handle': 'move', style: 'cursor:move' }));
     }
 
     if (layer.type === 'group') {
@@ -411,6 +563,8 @@ export class CanvasView {
       this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x - r - 9, y1: p.y, x2: p.x + r + 9, y2: p.y }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-anchor-ring', x1: p.x, y1: p.y - r - 9, x2: p.x, y2: p.y + r + 9 }));
       this.overlay.appendChild(svgEl('circle', { class: 'slt-anchor', cx: p.x, cy: p.y, r, 'data-handle': `anchor:${b.id}` }));
+      const reach = this.editor.preferences.touchArea;
+      if (reach > 0) this.overlay.appendChild(svgEl('circle', { class: 'slt-hit', cx: p.x, cy: p.y, r: r + reach, 'data-handle': `anchor:${b.id}`, style: 'cursor:move' }));
       const label = b.target === 'rotation' ? 'pivot' : b.target === 'scale' ? 'scale about' : `${b.target} from`;
       this.overlay.appendChild(svgEl('text', { class: 'slt-anchor-label', x: p.x + r + 12, y: p.y - 6 }, [label]));
     }
@@ -449,6 +603,18 @@ export class CanvasView {
   private onPointerDown(e: PointerEvent): void {
     const screen = this.eventScreen(e);
     this.pointers.set(e.pointerId, screen);
+    if (this.pointers.size === 1) this.pointerType = e.pointerType || 'mouse';
+    if (this.pointers.size === 2 && this.editor.preferences.lockView) {
+      // Locked: a second finger never zooms; it just ends what the first was doing.
+      if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'scale' || this.drag.kind === 'rotate' || this.drag.kind === 'anchor')) this.editor.store.endTransaction();
+      if (this.drag?.kind === 'press') clearTimeout(this.drag.timer);
+      if (this.drag?.kind === 'interact') this.editor.interaction.cancel();
+      this.drag = null;
+      this.activeHandle = null;
+      this.lifted = false;
+      this.renderOverlay();
+      return;
+    }
     if (this.pointers.size === 2) {
       // Second finger: abandon whatever single-finger gesture was in progress and pinch instead.
       if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'scale' || this.drag.kind === 'rotate')) {
@@ -474,7 +640,7 @@ export class CanvasView {
     if (this.drag) return;
     this.el.focus({ preventScroll: true });
 
-    if (e.button === 1 || (e.button === 0 && this.spaceDown)) {
+    if ((e.button === 1 || (e.button === 0 && this.spaceDown)) && !this.editor.preferences.lockView) {
       this.drag = { kind: 'pan', startScreen: screen, startPan: { x: this.view.panX, y: this.view.panY } };
       this.stage.setPointerCapture(e.pointerId);
       e.preventDefault();
@@ -494,6 +660,18 @@ export class CanvasView {
       const name = handleEl.getAttribute('data-handle')!;
       if (name.startsWith('anchor:')) {
         this.startAnchorDrag(name.slice(7));
+        this.stage.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+      if (name === 'move') {
+        // The move handle picks the layer up straight away (no press and hold).
+        this.startMoveDrag(screen);
+        if (this.drag) {
+          this.activeHandle = 'move';
+          this.lifted = true;
+          this.renderOverlay();
+        }
         this.stage.setPointerCapture(e.pointerId);
         e.preventDefault();
         return;
@@ -524,7 +702,7 @@ export class CanvasView {
       // direct mode: move the selected layer straight away
       this.startMoveDrag(screen);
     }
-    if (!this.drag) {
+    if (!this.drag && this.panAllowed()) {
       this.drag = { kind: 'pan', startScreen: screen, startPan: { x: this.view.panX, y: this.view.panY } };
     }
     this.stage.setPointerCapture(e.pointerId);
@@ -641,7 +819,7 @@ export class CanvasView {
         // Moved before the hold completed: this is a pan.
         if (Math.hypot(screen.x - d.startScreen.x, screen.y - d.startScreen.y) > (this.coarse ? 10 : 5)) {
           clearTimeout(d.timer);
-          this.drag = { kind: 'pan', startScreen: d.startScreen, startPan: { x: this.view.panX, y: this.view.panY } };
+          this.drag = this.panAllowed() ? { kind: 'pan', startScreen: d.startScreen, startPan: { x: this.view.panX, y: this.view.panY } } : null;
           this.renderOverlay();
         }
         break;
@@ -794,6 +972,7 @@ export class CanvasView {
 
   private onWheel(e: WheelEvent): void {
     e.preventDefault();
+    if (this.editor.preferences.lockView) return;
     const screen = this.eventScreen(e);
     const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.stageWrap.clientHeight : 1;
     if (e.ctrlKey || e.metaKey) {

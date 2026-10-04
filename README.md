@@ -490,6 +490,7 @@ new SvgLayEditor(host: HTMLElement, options?: EditorOptions)
 | `mobileBreakpoint`  | width in px below which `auto` uses the mobile layout (default 700)            |
 | `panels`            | `{ toolbar, library, layers, properties }` booleans to hide UI parts          |
 | `panelWidths`       | `{ library, side }` initial desktop panel widths in px (draggable)            |
+| `preferences`       | the person's saved preferences (see Preferences); save them on `preferenceschange` |
 | `shapes`            | list of shape ids allowed in the library                                       |
 | `shadow`            | `false` to render into light DOM instead of a shadow root                      |
 | `onChange`          | called with the document after every committed change                          |
@@ -502,12 +503,13 @@ Methods (all changes are undoable):
 - Editing: `addShape(shapeId, init?)`, `deleteSelection()`, `duplicateSelection()`, `groupSelection()`,
   `ungroupSelection()`, `reorderSelection('forward' | 'backward' | 'front' | 'back')`,
   `updateSelected(patch)`, `updateLayer(id, patch)`, `nudgeSelection(dx, dy)`, `undo()`, `redo()`
-- View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`
+- View: `setZoom(z)`, `zoomBy(f)`, `fitToView()`, `zoomToSelection()`
+- Preferences: `preferences`, `setPreferences(partial)`, `openPreferences()`, `viewPadShown()`
 - Theme & features: `setTheme(name)`, `setColors(tokens)`, `clearColors()`, `setFeatures(partial)`, `features`
 - Variables: `setVariables(values)`, `clearVariables()`, `registerVariables(group)`, `unregisterVariables(id)`, `registerVariablePresets(presets)`, `unregisterVariablePresets(ids?)`, `addVariable(init)`, `env()`, `resolvedDocument()`
 - Export: `exportSvg()`, `exportPng({ scale | width, background })`, `downloadSvg()`, `downloadPng()`,
   `downloadJson()`, `openJsonFile()`
-- Events: `on('change' | 'selectionchange' | 'viewchange', fn)` returns an unsubscribe function
+- Events: `on('change' | 'selectionchange' | 'viewchange' | 'preferenceschange' | ..., fn)` returns an unsubscribe function
 - `store` — the underlying `DocumentStore` (`commit`, `beginTransaction`/`endTransaction`, history)
 - `destroy()`
 
@@ -531,6 +533,32 @@ pointer.
   what is about to resize or rotate.
 - **Direct mode** (`'direct'`): dragging the selected layer moves it straight
   away; dragging anywhere else pans.
+- In either mode, the **move handle** (✥, in the middle of the selection, or
+  beside it when the shape is too small to hold it) moves the layer straight
+  away.
+
+### Preferences
+
+The gear in the toolbar opens **Preferences** (a dialog on desktop, a sheet on
+mobile; `features.preferences: false` hides the button). They belong to the
+person rather than the drawing, so the editor doesn't store them: pass saved
+ones in with the `preferences` option and save `preferenceschange`'s argument.
+Unknown or out-of-range values fall back to the defaults (`resolvePreferences`).
+
+| preference      | values (default first)                    | what it does |
+| --------------- | ----------------------------------------- | ------------ |
+| `handleSize`    | `null` (8 px with a mouse, 16 on touch), 6–28 | resize handle size; the rotate and move handles follow |
+| `handleOpacity` | `1`, 0.2–1                                | selection box, resize and rotate handles |
+| `markerOpacity` | `1`, 0.2–1                                | origin, pivot and anchor markers |
+| `touchArea`     | `6`, 0–24 px                              | invisible catch area around every handle |
+| `moveHandle`    | `'always'`, `'touch'`, `'off'`            | the move handle |
+| `canvasTouch`   | `'pad'`, `'pan'`                          | on touch, whether one finger dragging the canvas pans (`'pan'`) or only the view pad does; two fingers always pinch |
+| `viewPad`       | `'auto'` (on touch), `'right'`, `'left'`, `'hidden'` | the view pad over the canvas: drag its disc to pan, a zoom slider, fit, 1:1, zoom to the selection |
+| `lockView`      | `false`, `true`                           | dragging, pinching and scrolling the canvas never pan or zoom (the pad and the toolbar still do); the toolbar's lock button toggles it |
+
+On the mobile layout, while the pad shows, the toolbar leaves its zoom and fit
+buttons to the pad. **F** zooms to the selection (the whole drawing when
+nothing is selected).
 
 The canvas hint, tooltips and the Shortcuts section of the Canvas tab are
 written for the device in use: gestures on touch (mobile layout or a coarse

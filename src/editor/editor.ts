@@ -58,6 +58,7 @@ import { PropertiesPanel } from './properties-panel';
 import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, type ThemeName } from './features';
 import { EDITOR_STYLES } from './styles';
 import { Toolbar } from './toolbar';
+import { PreferencesDialog, resolvePreferences, type EditorPreferences } from './preferences';
 
 export interface EditorOptions {
   /** Initial document. Takes precedence over width/height/background. */
@@ -74,6 +75,11 @@ export interface EditorOptions {
   colors?: ThemeColors;
   /** Feature switches: colour mode, gradients, masks, groups, export ... */
   features?: Partial<EditorFeatures>;
+  /**
+   * The person's preferences (handle size, what touching the canvas does, the
+   * view pad...), as saved by the host app; save them again on `preferenceschange`.
+   */
+  preferences?: Partial<EditorPreferences>;
   /** Variables the host app exposes to formulas, grouped for the Variables panel. */
   variableGroups?: VariableGroup[];
   /** App-specific "+ add variable" buttons for the Variables panel. */
@@ -138,6 +144,8 @@ export interface EditorEvents extends Record<string, unknown[]> {
   appaction: [app: string, key: string | undefined, value: number | undefined];
   snapchange: [on: boolean];
   panelresize: [widths: PanelWidths];
+  /** The preferences changed (in the Preferences window, or the toolbar's lock): the host may save them. */
+  preferenceschange: [prefs: EditorPreferences];
 }
 
 /**
@@ -189,6 +197,9 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   /** Snap moves, resizes and nudges to the document grid. */
   snap = false;
   view: ViewState = { zoom: 1, panX: 0, panY: 0 };
+  /** How the editor feels to use (see EditorPreferences). */
+  preferences: EditorPreferences;
+  private prefsDialog: PreferencesDialog | null = null;
 
   private rootEl: HTMLElement;
   private canvas: CanvasView;
@@ -237,6 +248,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.variableGroups = (options.variableGroups ?? []).map(cloneGroup);
     this.variablePresets = (options.variablePresets ?? []).map((p) => ({ ...p }));
     this.appActions = (options.appActions ?? []).map((p) => ({ ...p }));
+    this.preferences = resolvePreferences(options.preferences);
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -257,7 +269,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.canvas = new CanvasView(this);
     this.strip = new LayerStrip(this);
     this.canvas.stripSlot.appendChild(this.strip.el);
-    this.canvas.updateHint();
+    this.canvas.preferencesChanged();
     if (panels.layers) this.layersPanel = new LayersPanel(this);
     if (panels.properties) this.propsPanel = new PropertiesPanel(this);
     this.root.appendChild(style);
@@ -724,6 +736,43 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.canvas.fitToView();
   }
 
+  /** Zoom and pan to the selected layers (the whole drawing when nothing is selected). */
+  zoomToSelection(): void {
+    const b = this.selection.length ? this.selectionBounds() : null;
+    if (b) this.canvas.fitRect(b);
+    else this.canvas.fitToView();
+  }
+
+  // -------------------------------------------------------------------------
+  // Preferences
+
+  /** Change some preferences; the canvas follows, and `preferenceschange` tells the host. */
+  setPreferences(patch: Partial<EditorPreferences>): void {
+    const next = resolvePreferences({ ...this.preferences, ...patch });
+    if (JSON.stringify(next) === JSON.stringify(this.preferences)) return;
+    this.preferences = next;
+    this.toolbar?.render();
+    this.canvas.preferencesChanged();
+    this.emit('preferenceschange', { ...next });
+  }
+
+  /** Whether the view pad is showing (Preferences: View pad; auto shows it on touch). */
+  viewPadShown(): boolean {
+    const p = this.preferences.viewPad;
+    return p === 'right' || p === 'left' || (p === 'auto' && this.inputMode() === 'touch');
+  }
+
+  /** Open the Preferences window. */
+  openPreferences(): void {
+    if (this.prefsDialog) return;
+    this.prefsDialog = new PreferencesDialog(this, () => {
+      this.prefsDialog = null;
+      this.canvas.el.focus({ preventScroll: true });
+    });
+    this.rootEl.appendChild(this.prefsDialog.el);
+    (this.prefsDialog.el.querySelector('button') as HTMLButtonElement | null)?.focus();
+  }
+
   /** World bounds of the selection (axis aligned). */
   selectionBounds() {
     return unionRects(this.topLevelSelection().map((id) => layerWorldBounds(this.store.doc, id)));
@@ -1076,6 +1125,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     else if (mod && key === 'g' && e.shiftKey) this.ungroupSelection();
     else if (mod && key === 'a') this.selectAll();
     else if (mod && key === '0') this.fitToView();
+    else if (!mod && !e.altKey && key === 'f') this.zoomToSelection();
     else if (mod && (key === '=' || key === '+')) this.zoomBy(1.25);
     else if (mod && key === '-') this.zoomBy(0.8);
     else if (key === 'delete' || key === 'backspace') this.deleteSelection();
@@ -1098,6 +1148,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     for (const d of this.disposers) d();
     if (this.animTimer) clearInterval(this.animTimer);
     this.layoutObserver?.disconnect();
+    this.prefsDialog?.el.remove();
     this.canvas.destroy();
     this.toolbar?.destroy();
     this.removeAllListeners();
