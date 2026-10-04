@@ -222,6 +222,16 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-readout { fill: var(--_slt-text); font: 600 12px var(--_slt-font); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 4px; stroke-linejoin: round; }
 .slt-loupe-bg { fill: var(--_slt-canvas); }
+.slt-overlay .slt-guide { stroke: #e0368f; stroke-width: 1; stroke-dasharray: 6 4; }
+.slt-overlay .slt-trail { fill: var(--_slt-accent); fill-opacity: 0.12; stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 3 3; }
+.slt-overlay .slt-trail-path { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
+.slt-overlay .slt-trail-end { fill: var(--_slt-accent); }
+.slt-prefs-note { margin: 8px 0 0; color: var(--_slt-muted); font-size: 11px; }
+.slt-prefs-keys { width: 100%; border-collapse: collapse; font-size: 12px; }
+.slt-prefs-keys th { text-align: left; font-weight: 600; padding: 4px 10px 4px 0; white-space: nowrap; vertical-align: top; color: var(--_slt-text); font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.slt-prefs-keys td { padding: 4px 0; color: var(--_slt-muted); }
+.slt-prefs-keys tr + tr { border-top: 1px solid var(--_slt-border); }
+.slt-switch.slt-try-trail { padding-left: 0; }
 .slt-loupe-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 2.5; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); }
 .slt-loupe-cross { stroke: var(--_slt-accent); stroke-width: 1.2; }
 .slt-overlay .slt-anchor-link { stroke: var(--_slt-accent); stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; opacity: var(--_slt-marker-op, 1); }

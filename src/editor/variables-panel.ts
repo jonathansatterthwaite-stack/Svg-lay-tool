@@ -1,4 +1,6 @@
 import {
+  findLayer,
+  referencedNames,
   anchorAttachable,
   anchorAxes,
   anchorLocalPoint,
@@ -54,7 +56,11 @@ export class VariablesPanel {
     this.el.appendChild(this.bindingsSection());
     // What touching the selected layer does (hotspots: see interact-panel.ts).
     const sel = this.editor.selectedLayers();
-    if (sel.length === 1) this.el.appendChild(interactSection(this.editor, sel[0]));
+    if (sel.length === 1) {
+      const tryIt = this.tryItSection(sel[0].id);
+      if (tryIt) this.el.appendChild(tryIt);
+      this.el.appendChild(interactSection(this.editor, sel[0]));
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -354,10 +360,83 @@ export class VariablesPanel {
     if (!b.enabled) card.dataset.disabled = '';
     return card;
   }
+
+  /** Try it: scrub a variable the layer's animation reads (not saved), with a motion trail on the canvas. */
+  private tryItSection(id: string): HTMLElement | null {
+    const ed = this.editor;
+    const layer = findLayer(ed.document, id);
+    if (!layer?.bindings?.length) return null;
+    const vars = tryableVariables(ed.document, layer);
+    if (!vars.length) return null;
+    const cur = vars.find((v) => v.name === ed.tryVariable) ?? vars[0];
+    const rows: HTMLElement[] = [];
+    if (vars.length > 1) {
+      const pick = select(cur.name, vars.map((v) => ({ value: v.name, label: v.name })), (name) => {
+        ed.tryVariable = name;
+        this.render();
+        ed.refreshCanvas();
+      });
+      pick.classList.add('slt-grow');
+      rows.push(el('div', { class: 'slt-row' }, [el('label', {}, ['Variable']), pick]));
+    }
+    const value = tryItValue(ed, cur.name);
+    rows.push(row(cur.name, slider(value, (v) => ed.setTryValue(cur.name, v), { min: cur.min, max: cur.max, step: cur.step, digits: cur.step < 1 ? 2 : 0 })));
+    const trail = el('input', { type: 'checkbox', role: 'switch', checked: ed.preferences.motionTrail });
+    trail.addEventListener('change', () => ed.setPreferences({ motionTrail: trail.checked }));
+    rows.push(el('div', { class: 'slt-row' }, [
+      el('label', { class: 'slt-switch slt-try-trail' }, [trail, el('span', {}, ['Motion trail'])]),
+      el('span', { class: 'slt-spacer' }),
+      button('Reset', () => {
+        ed.tryValues = {};
+        this.render();
+        ed.refreshCanvas();
+      }, { cls: 'slt-small', title: 'Back to the real values' }),
+    ]));
+    rows.push(el('div', { class: 'slt-hint' }, ['Try values to see the animation: nothing is saved. The trail shows where the layer goes across the range.']));
+    return section('Try it', rows);
+  }
+}
+
+/**
+ * Variables a layer's bindings read that can be tried with a slider: the
+ * drawing's own (their ranges), and the clock's hours, minutes and seconds.
+ */
+export function tryableVariables(doc: SvgDocument, layer: Layer): { name: string; min: number; max: number; step: number }[] {
+  const names = new Set<string>();
+  for (const b of layer.bindings ?? []) {
+    if (!b.enabled) continue;
+    try {
+      for (const n of referencedNames(b.expression)) names.add(n);
+    } catch {
+      /* a broken formula reads nothing */
+    }
+  }
+  // Variables that are formulas of other variables: try what they're made from too.
+  for (const v of doc.variables ?? []) {
+    if (names.has(v.name) && v.expression?.trim()) {
+      try {
+        for (const n of referencedNames(v.expression)) names.add(n);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  const clock: Record<string, [number, number, number]> = { seconds: [0, 59, 1], minutes: [0, 59, 1], hours12: [0, 11, 1], hours: [0, 23, 1], time: [0, 43200, 1] };
+  const out: { name: string; min: number; max: number; step: number }[] = [];
+  for (const v of doc.variables ?? []) {
+    if (names.has(v.name) && !v.expression?.trim() && v.max > v.min) out.push({ name: v.name, min: v.min, max: Math.min(v.max, v.min + 1e6), step: v.step || (v.max - v.min) / 100 });
+  }
+  for (const [n, [min, max, step]] of Object.entries(clock)) if (names.has(n)) out.push({ name: n, min, max, step });
+  return out;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+function tryItValue(ed: SvgLayEditor, name: string): number {
+  if (name in ed.tryValues) return ed.tryValues[name];
+  return ed.env()[name] ?? 0;
+}
 
 function updateLayerIn(doc: SvgDocument, id: string, fn: (l: Layer) => Layer): SvgDocument {
   return updateLayer(doc, id, fn);

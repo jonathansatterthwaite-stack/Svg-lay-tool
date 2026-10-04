@@ -18,6 +18,10 @@ describe('resolvePreferences', () => {
     expect(resolvePreferences({ fineFactor: 0.1, readout: false, tapSelect: false })).toMatchObject({ fineFactor: 0.1, readout: false, tapSelect: false, magnifier: true });
     expect(resolvePreferences({ fineFactor: 0.3 as never }).fineFactor).toBe(0.25);
   });
+  it('snapping and animation settings', () => {
+    expect(resolvePreferences({ rotationStep: 45, snapToShapes: false, snapStartsOn: true, motionTrail: false })).toMatchObject({ rotationStep: 45, snapToShapes: false, snapStartsOn: true, motionTrail: false });
+    expect(resolvePreferences({ rotationStep: 10 as never }).rotationStep).toBe(15);
+  });
   it('null handle size means pick by pointer', () => {
     expect(resolvePreferences({ handleSize: null }).handleSize).toBeNull();
   });

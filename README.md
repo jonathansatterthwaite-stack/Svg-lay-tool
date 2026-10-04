@@ -581,6 +581,20 @@ more slowly), `magnifier` (touch: a close-up of what's under the finger while
 dragging), `nudgePad` (touch: arrows moving the selection by 1 or 10, by the
 grid with Snap on; held, they repeat) and `tapSelect`.
 
+Snapping (Preferences → Snapping): `snapToShapes` (moving a layer lines its
+edges and centre up with other layers' and the canvas's, showing pink guide
+lines; the grid still takes an axis that didn't line up; off during a fine
+drag), `rotationStep` (5, 15, 30 or 45°: with Shift, or always while Snap is
+on) and `snapStartsOn`. The grid size stays the drawing's own (`doc.grid`).
+
+**Try it** (Variables tab, for a layer with bindings): a slider for a variable
+its bindings read (the drawing's own variables, and the clock's seconds,
+minutes and hours), to see the animation without saving anything
+(`editor.setTryValue(name, value)`, `tryValues`; cleared when the selection
+changes), and a **motion trail** (`motionTrail`): faint outlines of the layer
+at nine steps across that variable's range, joined by a path. Preferences also
+lists every shortcut (Shortcuts page).
+
 On the mobile layout, while the pad shows, the toolbar leaves its zoom and fit
 buttons to the pad. **F** zooms to the selection (the whole drawing when
 nothing is selected).

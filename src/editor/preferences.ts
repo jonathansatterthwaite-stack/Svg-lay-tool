@@ -36,6 +36,14 @@ export interface EditorPreferences {
   nudgePad: boolean;
   /** A tap or click on the canvas selects what's there; again on the same spot, what's underneath. */
   tapSelect: boolean;
+  /** Moving a layer lines it up with other layers' edges and centres (and the canvas's), with guide lines. */
+  snapToShapes: boolean;
+  /** Degrees a turn snaps to, with Shift or while Snap is on. */
+  rotationStep: 5 | 15 | 30 | 45;
+  /** Snap is on when the editor opens. */
+  snapStartsOn: boolean;
+  /** Faint copies of the selected layer along a variable's range (Variables tab, Try it). */
+  motionTrail: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -52,6 +60,10 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   magnifier: true,
   nudgePad: true,
   tapSelect: true,
+  snapToShapes: true,
+  rotationStep: 15,
+  snapStartsOn: false,
+  motionTrail: true,
 };
 
 const clampNum = (v: unknown, lo: number, hi: number, d: number) =>
@@ -76,14 +88,20 @@ export function resolvePreferences(p: Partial<EditorPreferences> | null | undefi
     magnifier: q.magnifier !== false,
     nudgePad: q.nudgePad !== false,
     tapSelect: q.tapSelect !== false,
+    snapToShapes: q.snapToShapes !== false,
+    rotationStep: ([5, 15, 30, 45] as const).includes(q.rotationStep as never) ? (q.rotationStep as 5 | 15 | 30 | 45) : d.rotationStep,
+    snapStartsOn: q.snapStartsOn === true,
+    motionTrail: q.motionTrail !== false,
   };
 }
 
-type PageId = 'handles' | 'view' | 'precision';
+type PageId = 'handles' | 'view' | 'snapping' | 'precision' | 'shortcuts';
 const PAGES: { id: PageId; label: string }[] = [
   { id: 'handles', label: 'Handles' },
   { id: 'view', label: 'Canvas & view' },
+  { id: 'snapping', label: 'Snapping' },
   { id: 'precision', label: 'Precision' },
+  { id: 'shortcuts', label: 'Shortcuts' },
 ];
 
 /** The Preferences window (a dialog on desktop, a sheet from the bottom on mobile). */
@@ -166,6 +184,53 @@ export class PreferencesDialog {
         choice('Move handle', 'A grab point in the middle of the selection (beside it when the shape is small): drag it to move the layer straight away', p.moveHandle,
           [['always', 'Always'], ['touch', 'Touch only'], ['off', 'Off']], (v) => set({ moveHandle: v })),
         (this.previewSlot = el('div', { class: 'slt-prefs-preview-slot' }, [this.preview()])),
+      );
+    } else if (this.page === 'snapping') {
+      this.previewSlot = null;
+      rows.push(
+        el('h4', {}, ['Snapping']),
+        toggle('Snap to other shapes', "Moving a layer lines it up with other layers' edges and centres, and the canvas's, with guide lines (not during a fine drag)", p.snapToShapes, (v) => set({ snapToShapes: v })),
+        choice('Rotation step', 'Turns snap to this with Shift, or always while Snap is on', String(p.rotationStep) as '5' | '15' | '30' | '45',
+          [['5', '5°'], ['15', '15°'], ['30', '30°'], ['45', '45°']], (v) => set({ rotationStep: Number(v) as 5 | 15 | 30 | 45 })),
+        toggle('Snap starts on', 'The Snap switch is on when the editor opens', p.snapStartsOn, (v) => set({ snapStartsOn: v })),
+        el('p', { class: 'slt-prefs-note' }, ["The grid's size is the drawing's own: set it in the Canvas tab."]),
+        el('h4', {}, ['Animation']),
+        toggle('Motion trail', 'Faint copies of the selected layer along a variable\'s range, to see where its animation goes (Variables tab, Try it)', p.motionTrail, (v) => set({ motionTrail: v })),
+      );
+    } else if (this.page === 'shortcuts') {
+      this.previewSlot = null;
+      const m = ed.modKey();
+      const keys: [string, string][] = [
+        ['Arrows', 'Nudge by 1 (Shift: 10; with Snap on, by the grid)'],
+        [`${m}+Z / ${m}+Y`, 'Undo / redo'],
+        [`${m}+D`, 'Duplicate'],
+        ['Delete', 'Delete'],
+        ['[ and ]', 'Send backward / bring forward (with ' + m + ': to the back / front)'],
+        [`${m}+G / ${m}+Shift+G`, 'Group / ungroup'],
+        [`${m}+A`, 'Select all'],
+        ['Escape', 'Clear the selection'],
+        ['Click on the canvas', 'Select a layer (again: the one under it)'],
+        ['Shift while moving', 'Move along one axis only'],
+        ['Shift while resizing', 'Keep the proportions (Alt: from the centre)'],
+        ['Shift while turning', `Snap to ${p.rotationStep}°`],
+        [`${m} while dragging`, 'Fine drag'],
+        ['Space+drag, middle button', 'Pan'],
+        [`${m}+scroll, ${m}+= / ${m}+-`, 'Zoom'],
+        [`${m}+0`, 'Fit to view'],
+        ['F', 'Zoom to the selection'],
+      ];
+      rows.push(
+        el('h4', {}, ['Keyboard and mouse']),
+        el('table', { class: 'slt-prefs-keys' }, keys.map(([k, what]) => el('tr', {}, [el('th', {}, [k]), el('td', {}, [what])]))),
+        el('h4', {}, ['Touch']),
+        el('table', { class: 'slt-prefs-keys' }, ([
+          ['Tap', 'Select a layer (again: the one under it)'],
+          ['✥ handle', 'Move the selected layer'],
+          ['Hold a layer', 'Pick it up to move it'],
+          ['Two fingers', 'Pinch to zoom (and pan)'],
+          ['View pad', 'Pan, zoom, fit'],
+          ['Nudge pad', 'Move by 1 or 10; Fine for slower drags'],
+        ] as [string, string][]).map(([k, what]) => el('tr', {}, [el('th', {}, [k]), el('td', {}, [what])]))),
       );
     } else if (this.page === 'precision') {
       this.previewSlot = null;

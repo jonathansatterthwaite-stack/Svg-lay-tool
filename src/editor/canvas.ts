@@ -10,6 +10,11 @@ import {
   snapTo,
   layerBox,
   findLayer,
+  documentEnv,
+  layerWorldBounds,
+  resolveDocument,
+  TIME_VARIABLE_NAMES,
+  unionRects,
   invert,
   layerFrameBounds,
   layerFrameMatrix,
@@ -32,6 +37,7 @@ import { clear, el, svgEl } from './dom';
 import type { SvgLayEditor } from './editor';
 import { icon } from './icons';
 import { moveArrows } from './preferences';
+import { tryableVariables } from './variables-panel';
 
 type HandleDir = { hx: -1 | 0 | 1; hy: -1 | 0 | 1 };
 
@@ -53,6 +59,8 @@ type DragState =
       origDoc: SvgDocument;
       items: { id: string; x: number; y: number; parentInv: Mat }[];
       moved: boolean;
+      /** Lines to snap to (world x and y of other layers' edges and centres, and the canvas's), found once. */
+      targets?: { xs: number[]; ys: number[]; box: Rect | null };
     }
   | {
       kind: 'scale';
@@ -114,6 +122,9 @@ export class CanvasView {
   private nudgeBig = false;
   private toast: HTMLDivElement;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Guide lines shown while a move snaps to other shapes (world x / y). */
+  private guides: { x?: number; y?: number } = {};
+  private trailCache: { doc: SvgDocument; key: string; polys: Point[][] } | null = null;
   private pointers = new Map<number, Point>();
   private coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private spaceDown = false;
@@ -580,6 +591,8 @@ export class CanvasView {
       if (f) this.overlay.appendChild(svgEl('polygon', { class: 'slt-hover-outline', points: pts(rectCorners(f.box).map(f.toScreen)) }));
     }
 
+    if (ed.selection.length === 1 && ed.isTabOpen('variables') && ed.preferences.motionTrail && !this.drag) this.renderTrail(ed.selection[0]);
+
     const rotating = this.drag?.kind === 'rotate';
     for (const id of ed.selection) {
       if (rotating) break; // the box is meaningless mid-rotation; it is recalculated on release
@@ -598,6 +611,7 @@ export class CanvasView {
       if (f && !f.layer.locked) this.renderHandles(f);
       if (ed.isTabOpen('variables')) this.renderAnchors(ed.selection[0]);
     }
+    this.renderGuides();
     this.renderReadout();
     this.renderLoupe();
     this.updateNudge();
@@ -695,6 +709,81 @@ export class CanvasView {
       this.overlay.appendChild(svgEl('line', { class: 'slt-pivot', x1: piv.x - 7, y1: piv.y, x2: piv.x + 7, y2: piv.y }));
       this.overlay.appendChild(svgEl('line', { class: 'slt-pivot', x1: piv.x, y1: piv.y - 7, x2: piv.x, y2: piv.y + 7 }));
     }
+  }
+
+  /** Other layers' edges and centres (and the canvas's) to line a moved selection up with. */
+  private snapTargets(doc: SvgDocument, moving: string[]): { xs: number[]; ys: number[]; box: Rect | null } {
+    const xs = [0, doc.width / 2, doc.width];
+    const ys = [0, doc.height / 2, doc.height];
+    const skip = new Set(moving);
+    const walk = (layers: Layer[], inside: boolean) => {
+      for (const l of layers) {
+        const own = inside || skip.has(l.id);
+        if (!own && l.visible) {
+          const b = layerWorldBounds(doc, l.id);
+          if (b) {
+            xs.push(b.x, b.x + b.width / 2, b.x + b.width);
+            ys.push(b.y, b.y + b.height / 2, b.y + b.height);
+          }
+        }
+        if (l.type === 'group') walk(l.children, own);
+      }
+    };
+    walk(doc.layers, false);
+    const box = unionRects(moving.map((id) => layerWorldBounds(doc, id)));
+    return { xs, ys, box };
+  }
+
+  private renderGuides(): void {
+    const g = this.guides;
+    if (g.x === undefined && g.y === undefined) return;
+    const w = this.stageWrap.clientWidth || 2000, h = this.stageWrap.clientHeight || 2000;
+    if (g.x !== undefined) {
+      const x = this.worldToScreen({ x: g.x, y: 0 }).x;
+      this.overlay.appendChild(svgEl('line', { class: 'slt-guide', x1: x, y1: 0, x2: x, y2: h }));
+    }
+    if (g.y !== undefined) {
+      const y = this.worldToScreen({ x: 0, y: g.y }).y;
+      this.overlay.appendChild(svgEl('line', { class: 'slt-guide', x1: 0, y1: y, x2: w, y2: y }));
+    }
+  }
+
+  /** Motion trail: faint outlines of the layer at steps across the Try it variable's range, joined by a path. */
+  private renderTrail(id: string): void {
+    const ed = this.editor;
+    const layer = findLayer(ed.document, id);
+    if (!layer?.bindings?.length) return;
+    const vars = tryableVariables(ed.document, layer);
+    const v = vars.find((x) => x.name === ed.tryVariable) ?? vars[0];
+    if (!v) return;
+    const over = ed.valueOverrides();
+    const key = JSON.stringify([id, v, Object.entries(over).filter(([k]) => !TIME_VARIABLE_NAMES.includes(k))]);
+    let polys: Point[][];
+    if (this.trailCache && this.trailCache.doc === ed.document && this.trailCache.key === key) polys = this.trailCache.polys;
+    else {
+      polys = [];
+      const steps = 8;
+      for (let k = 0; k <= steps; k++) {
+        const value = v.min + ((v.max - v.min) * k) / steps;
+        const env = documentEnv(ed.document, { ...over, [v.name]: value });
+        const doc = resolveDocument(ed.document, env);
+        const l = findLayer(doc, id);
+        const box = l ? layerFrameBounds(l) : null;
+        if (!l || !box) continue;
+        const m = multiply(parentWorldMatrix(doc, id), layerFrameMatrix(l));
+        polys.push(rectCorners(box).map((p) => applyToPoint(m, p)));
+      }
+      this.trailCache = { doc: ed.document, key, polys };
+    }
+    if (polys.length < 2) return;
+    const scr = polys.map((poly) => poly.map((p) => this.worldToScreen(p)));
+    scr.forEach((poly, i) => {
+      this.overlay.appendChild(svgEl('polygon', { class: 'slt-trail', points: poly.map((p) => `${p.x},${p.y}`).join(' '), opacity: String(0.15 + (0.45 * i) / (scr.length - 1)) }));
+    });
+    const centres = scr.map((poly) => ({ x: poly.reduce((s, p) => s + p.x, 0) / 4, y: poly.reduce((s, p) => s + p.y, 0) / 4 }));
+    this.overlay.appendChild(svgEl('polyline', { class: 'slt-trail-path', points: centres.map((p) => `${p.x},${p.y}`).join(' ') }));
+    const last = centres[centres.length - 1];
+    this.overlay.appendChild(svgEl('circle', { class: 'slt-trail-end', cx: last.x, cy: last.y, r: 3 }));
   }
 
   /** Values beside the pointer while dragging (Preferences: Readout). */
@@ -1071,6 +1160,25 @@ export class CanvasView {
         if (!d.moved && Math.hypot(delta.x, delta.y) * this.view.zoom < 2) return;
         d.moved = true;
         if (e.shiftKey) delta = Math.abs(delta.x) > Math.abs(delta.y) ? { x: delta.x, y: 0 } : { x: 0, y: delta.y };
+        // Line up with other shapes (not during a fine drag); the grid takes an axis that didn't.
+        this.guides = {};
+        let snapX = true, snapY = true;
+        if (this.editor.preferences.snapToShapes && !(this.fineOn || this.fineHeld)) {
+          const t = (d.targets ??= this.snapTargets(d.origDoc, d.items.map((i) => i.id)));
+          if (t.box) {
+            const tol = (this.coarse ? 10 : 6) / this.view.zoom;
+            const b = { x: t.box.x + delta.x, y: t.box.y + delta.y, width: t.box.width, height: t.box.height };
+            const best = (mine: number[], lines: number[]) => {
+              let out: { line: number; shift: number } | null = null;
+              for (const m of mine) for (const l of lines) if (Math.abs(l - m) <= tol && (!out || Math.abs(l - m) < Math.abs(out.shift))) out = { line: l, shift: l - m };
+              return out;
+            };
+            const bx = e.shiftKey && delta.x === 0 ? null : best([b.x, b.x + b.width / 2, b.x + b.width], t.xs);
+            const by = e.shiftKey && delta.y === 0 ? null : best([b.y, b.y + b.height / 2, b.y + b.height], t.ys);
+            if (bx) { delta = { ...delta, x: delta.x + bx.shift }; this.guides.x = bx.line; snapX = false; }
+            if (by) { delta = { ...delta, y: delta.y + by.shift }; this.guides.y = by.line; snapY = false; }
+          }
+        }
         let doc = d.origDoc;
         const snap = this.editor.snap ? this.editor.grid : null;
         for (const item of d.items) {
@@ -1083,8 +1191,8 @@ export class CanvasView {
             const box = layer ? layerBox(layer) : null;
             const ox = box ? box.x : 0;
             const oy = box ? box.y : 0;
-            nx = snapTo(nx + ox, snap.width) - ox;
-            ny = snapTo(ny + oy, snap.height) - oy;
+            if (snapX) nx = snapTo(nx + ox, snap.width) - ox;
+            if (snapY) ny = snapTo(ny + oy, snap.height) - oy;
           }
           doc = updateLayer(doc, item.id, { x: round(nx), y: round(ny) });
         }
@@ -1135,7 +1243,8 @@ export class CanvasView {
         const p = this.screenToWorld(screen);
         const angle = Math.atan2(p.y - d.pivotWorld.y, p.x - d.pivotWorld.x);
         let rotation = d.layer.rotation + ((angle - d.startAngle) * 180) / Math.PI;
-        if (e.shiftKey) rotation = Math.round(rotation / 15) * 15;
+        const stepDeg = this.editor.preferences.rotationStep;
+        if (e.shiftKey || this.editor.snap) rotation = Math.round(rotation / stepDeg) * stepDeg;
         rotation = Math.round((((rotation % 360) + 360) % 360) * 10) / 10;
         this.editor.store.update(updateLayer(d.origDoc, d.id, (l) => rotateLayer(l, rotation)));
         break;
@@ -1202,6 +1311,10 @@ export class CanvasView {
     this.drag = null;
     this.activeHandle = null;
     this.lifted = false;
+    if (this.guides.x !== undefined || this.guides.y !== undefined) {
+      this.guides = {};
+      this.renderOverlay();
+    }
     if (tapped) queueMicrotask(() => this.tapSelect(tap!.client));
     switch (d.kind) {
       case 'interact':

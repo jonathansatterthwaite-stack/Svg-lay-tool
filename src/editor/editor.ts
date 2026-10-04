@@ -225,6 +225,10 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   variableOverrides: Env = {};
   /** Values changed by touching hotspots in Preview: they last until Preview ends. */
   previewValues: Env = {};
+  /** Try it (Variables tab): values set for a look while editing; never saved, cleared with the selection. */
+  tryValues: Env = {};
+  /** The variable the Try it slider and the motion trail use (null: the first the layer's bindings read). */
+  tryVariable: string | null = null;
   private interactionInstance: Interaction | null = null;
   /** Host-registered variable groups (see registerVariables). */
   variableGroups: VariableGroup[] = [];
@@ -249,6 +253,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.variablePresets = (options.variablePresets ?? []).map((p) => ({ ...p }));
     this.appActions = (options.appActions ?? []).map((p) => ({ ...p }));
     this.preferences = resolvePreferences(options.preferences);
+    this.snap = this.preferences.snapStartsOn;
 
     const useShadow = options.shadow !== false;
     this.root = useShadow ? (host.shadowRoot ?? host.attachShadow({ mode: 'open' })) : host;
@@ -553,6 +558,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     const same = ids.length === this.selection.length && ids.every((id, i) => id === this.selection[i]);
     if (same) return;
     this.selection = ids;
+    this.tryValues = {};
+    this.tryVariable = null;
     // Selecting something while looking at canvas settings jumps to the layer settings.
     if (ids.length && this.activeTab === 'canvas' && this.sheetOpen && this.tabButtons.has('layer')) this.showTab('layer');
     this.refresh(false);
@@ -862,7 +869,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   renderOptions(): RenderOptions {
     const f = this.features;
     const out: RenderOptions = f.colorMode === 'full' ? {} : { colorMode: f.colorMode, monoColor: f.monoColor };
-    const vars = { ...this.appVariableValues(), ...this.variableOverrides, ...(this.preview ? this.previewValues : {}) };
+    const vars = this.valueOverrides();
     if (Object.keys(vars).length) out.variables = vars;
     return out;
   }
@@ -1073,7 +1080,26 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   /** Current expression environment: time built-ins, document variables, app variables, host overrides. */
   env(): Env {
-    return documentEnv(this.store.doc, { ...this.appVariableValues(), ...this.variableOverrides, ...(this.preview ? this.previewValues : {}) });
+    return documentEnv(this.store.doc, this.valueOverrides());
+  }
+
+  /** Values that win over the document's own: the host's, Try it's, Preview's. */
+  valueOverrides(): Env {
+    return { ...this.appVariableValues(), ...this.variableOverrides, ...this.tryValues, ...(this.preview ? this.previewValues : {}) };
+  }
+
+  /** Redraw the canvas (after something only it shows changed, like the Try it variable). */
+  refreshCanvas(): void {
+    this.canvas.render();
+  }
+
+  /** Try a value for a variable (or null to go back to its own); the canvas redraws, nothing is saved. */
+  setTryValue(name: string, value: number | null): void {
+    const next = { ...this.tryValues };
+    if (value === null) delete next[name];
+    else next[name] = value;
+    this.tryValues = next;
+    this.canvas.render();
   }
 
   private refreshVariablesPanel(): void {
