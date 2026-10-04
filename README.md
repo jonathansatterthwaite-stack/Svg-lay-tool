@@ -537,8 +537,9 @@ A thumbnail strip beside the canvas lists the layers at the current level
 layer; groups have a corner button to step inside, and an up arrow leads back
 out. Because selection happens there, the canvas itself can be forgiving:
 
-The canvas never changes the selection: selection happens only in the strip
-or the Layers panel. The selected layer is the one thing the canvas can move,
+Dragging on the canvas never changes the selection; a tap or click selects
+the layer drawn there, and another on the same spot the one under it (with a
+note naming it; Preferences → Tap to select). The selected layer is the one thing the canvas can move,
 and it can be grabbed anywhere inside its box even when it is transparent,
 unfilled or hidden behind other layers, because unselected layers ignore the
 pointer.
@@ -572,6 +573,13 @@ Unknown or out-of-range values fall back to the defaults (`resolvePreferences`).
 | `canvasTouch`   | `'pad'`, `'pan'`                          | on touch, whether one finger dragging the canvas pans (`'pan'`) or only the view pad does; two fingers always pinch |
 | `viewPad`       | `'auto'` (on touch), `'right'`, `'left'`, `'hidden'` | the view pad over the canvas: drag its disc to pan, a zoom slider, fit, 1:1, zoom to the selection |
 | `lockView`      | `false`, `true`                           | dragging, pinching and scrolling the canvas never pan or zoom (the pad and the toolbar still do); the toolbar's lock button toggles it |
+
+Precision (Preferences → Precision): `readout` (values beside the pointer
+while dragging), `fineFactor` (½, ¼ or ⅒: hold Ctrl/⌘ while dragging, or Fine
+on the nudge pad, and moves, resizes and turns follow the pointer that much
+more slowly), `magnifier` (touch: a close-up of what's under the finger while
+dragging), `nudgePad` (touch: arrows moving the selection by 1 or 10, by the
+grid with Snap on; held, they repeat) and `tapSelect`.
 
 On the mobile layout, while the pad shows, the toolbar leaves its zoom and fit
 buttons to the pad. **F** zooms to the selection (the whole drawing when

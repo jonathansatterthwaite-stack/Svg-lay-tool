@@ -124,14 +124,15 @@ export class PropertiesPanel {
     if (this.editor.inputMode() === 'touch') {
       return section('Tips', [
         el('div', { class: 'slt-hint' }, [`${pick} · drag a handle to resize along the canvas axes · drag the ring to rotate · ${pan}`]),
-        el('div', { class: 'slt-hint' }, [`Select layers in the strip or the Layers tab; the corner button on a group thumbnail opens it. ${f.groups ? 'Group, ungroup, ' : ''}duplicate, reorder and delete from the Layers tab toolbar; undo and redo from the top bar.`]),
+        el('div', { class: 'slt-hint' }, [`${p.tapSelect ? 'Tap a layer on the canvas to select it (tap again for the one under it), or use' : 'Select layers in'} the strip or the Layers tab; the corner button on a group thumbnail opens it. ${f.groups ? 'Group, ungroup, ' : ''}duplicate, reorder and delete from the Layers tab toolbar; undo and redo from the top bar.`]),
+        el('div', { class: 'slt-hint' }, ['The nudge pad moves the selected layer by 1 or 10; its Fine makes drags slower and more exact. A magnifier shows what is under your finger while you drag (Preferences, the gear).']),
       ]);
     }
     const m = this.editor.modKey();
     return section('Shortcuts', [
-      el('div', { class: 'slt-hint' }, [`${pick} · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°) · ${m}+scroll zooms · F zooms to the selection`]),
+      el('div', { class: 'slt-hint' }, [`${pick} · handles resize along the canvas axes (Shift keeps ratio, Alt from centre) · ring handle rotates (Shift snaps 15°) · hold ${m} while dragging to go slower · ${m}+scroll zooms · F zooms to the selection`]),
       el('div', { class: 'slt-hint' }, [`${f.groups ? `${m}+G group · ${m}+Shift+G ungroup · ` : ''}${m}+D duplicate · [ ] reorder · Del delete · ${m}+Z / ${m}+Y undo/redo`]),
-      el('div', { class: 'slt-hint' }, ['Select layers in the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.']),
+      el('div', { class: 'slt-hint' }, [`${p.tapSelect ? 'Click a layer on the canvas to select it (click again for the one under it), or use' : 'Select layers in'} the strip or the Layers panel; the corner button on a group thumbnail opens it. Shift+click adds to the selection.`]),
     ]);
   }
 

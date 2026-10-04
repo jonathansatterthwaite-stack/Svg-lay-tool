@@ -102,6 +102,18 @@ export class CanvasView {
   private drag: DragState | null = null;
   /** The pointer type of the press in progress (touch rules differ: see EditorPreferences.canvasTouch). */
   private pointerType = 'mouse';
+  /** Where a drag acts: the pointer, or (fine drag) a point that follows it more slowly. */
+  private virt: { last: Point; at: Point } | null = null;
+  /** Fine drag switched on from the nudge pad (touch); Ctrl/⌘ does it with a mouse. */
+  private fineOn = false;
+  private fineHeld = false;
+  /** A press that may turn out to be a tap (tap to select). */
+  private tapStart: { screen: Point; client: Point; time: number } | null = null;
+  private loupe: SVGGElement;
+  private nudge: HTMLDivElement;
+  private nudgeBig = false;
+  private toast: HTMLDivElement;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private pointers = new Map<number, Point>();
   private coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   private spaceDown = false;
@@ -128,13 +140,18 @@ export class CanvasView {
     this.gridRect = svgEl('rect', { fill: `url(#${this.idPrefix}grid)`, 'pointer-events': 'none' });
     this.viewG = svgEl('g', { class: 'slt-view' }, [this.checker, this.docG, this.gridRect, this.frameRect]);
     this.overlay = svgEl('g', { class: 'slt-overlay' });
-    this.stage = svgEl('svg', { class: 'slt-stage' }, [this.staticDefs, this.docDefs, this.viewG, this.overlay]);
+    this.viewG.id = `${this.idPrefix}view`;
+    this.overlay.id = `${this.idPrefix}overlay`;
+    this.loupe = svgEl('g', { class: 'slt-loupe', 'pointer-events': 'none' });
+    this.stage = svgEl('svg', { class: 'slt-stage' }, [this.staticDefs, this.docDefs, this.viewG, this.overlay, this.loupe]);
     this.hint = el('div', { class: 'slt-canvas-hint' }, ['Scroll to pan · Ctrl+scroll to zoom · Space+drag to pan']);
     this.stripSlot = el('div', { class: 'slt-strip-slot' });
     this.padKnob = el('span', { class: 'slt-viewpad-knob' });
     this.padZoom = el('input', { class: 'slt-viewpad-zoom', type: 'range', min: -4.3, max: 5, step: 0.01, value: 0, 'aria-label': 'Zoom' });
     this.pad = this.buildPad();
-    this.stageWrap = el('div', { class: 'slt-stage-wrap' }, [this.stage, this.hint, this.pad]);
+    this.nudge = this.buildNudge();
+    this.toast = el('div', { class: 'slt-canvas-toast', role: 'status', 'aria-live': 'polite' });
+    this.stageWrap = el('div', { class: 'slt-stage-wrap' }, [this.stage, this.hint, this.pad, this.nudge, this.toast]);
     this.el = el('div', { class: 'slt-canvas', tabindex: 0 }, [this.stripSlot, this.stageWrap]);
 
     this.bind();
@@ -355,6 +372,132 @@ export class CanvasView {
     this.stageWrap.classList.toggle('slt-pad-left', show && p.viewPad === 'left');
   }
 
+  // -------------------------------------------------------------------------
+  // The nudge pad (touch): arrows that move the selection by 1 or 10 (the grid with Snap on); Fine.
+
+  private buildNudge(): HTMLDivElement {
+    const ed = this.editor;
+    const pad = el('div', { class: 'slt-nudge', role: 'group', 'aria-label': 'Nudge the selected layer' });
+    const fine = el('button', { type: 'button', class: 'slt-nudge-fine', title: 'Fine drag: moves, resizes and turns more slowly', 'aria-pressed': 'false' }, ['Fine']);
+    fine.addEventListener('click', () => {
+      this.fineOn = !this.fineOn;
+      this.updateNudge();
+    });
+    const big = el('button', { type: 'button', class: 'slt-nudge-step', title: 'Step: 1 or 10' }, ['×1']);
+    big.addEventListener('click', () => {
+      this.nudgeBig = !this.nudgeBig;
+      this.updateNudge();
+    });
+    const arrow = (dx: number, dy: number, label: string, ic: 'up' | 'down' | 'chevronRight', cls: string) => {
+      const b = el('button', { type: 'button', class: `slt-nudge-arrow ${cls}`, title: `Nudge ${label}`, 'aria-label': `Nudge ${label}` }, [icon(ic)]);
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const step = () => {
+        const g = ed.grid;
+        const n = ed.snap ? (dx ? g.width : g.height) : this.nudgeBig ? 10 : 1;
+        ed.nudgeSelection(dx * n, dy * n);
+      };
+      const stop = () => {
+        if (timer) clearTimeout(timer);
+        timer = null;
+      };
+      // Held down, it repeats.
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        step();
+        stop();
+        const again = () => {
+          step();
+          timer = setTimeout(again, 70);
+        };
+        timer = setTimeout(again, 400);
+      });
+      for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+      b.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') step();
+      });
+      return b;
+    };
+    const blank = () => el('span', { class: 'slt-nudge-blank' });
+    pad.append(
+      fine, arrow(0, -1, 'up', 'up', ''), blank(),
+      arrow(-1, 0, 'left', 'chevronRight', 'slt-nudge-left'), big, arrow(1, 0, 'right', 'chevronRight', ''),
+      blank(), arrow(0, 1, 'down', 'down', ''), blank(),
+    );
+    pad.addEventListener('pointerdown', (e) => e.stopPropagation());
+    pad.addEventListener('wheel', (e) => e.stopPropagation());
+    return pad;
+  }
+
+  private updateNudge(): void {
+    const ed = this.editor;
+    const p = ed.preferences;
+    const show = p.nudgePad && ed.inputMode() === 'touch' && ed.selection.length > 0 && !ed.preview;
+    this.nudge.hidden = !show;
+    this.nudge.dataset.side = p.viewPad === 'left' && ed.viewPadShown() ? 'right' : 'left';
+    const fine = this.nudge.querySelector('.slt-nudge-fine') as HTMLButtonElement;
+    fine.setAttribute('aria-pressed', this.fineOn ? 'true' : 'false');
+    fine.toggleAttribute('data-active', this.fineOn);
+    (this.nudge.querySelector('.slt-nudge-step') as HTMLButtonElement).textContent = this.nudgeBig ? '×10' : '×1';
+  }
+
+  /** A short message over the canvas (what a tap picked). */
+  private showToast(text: string): void {
+    this.toast.textContent = text;
+    this.toast.dataset.show = '';
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => delete this.toast.dataset.show, 2400);
+  }
+
+  /** Layers drawn at a client point, top first (any layer, not just the selected one; locked ones skipped). */
+  layersAt(client: Point): string[] {
+    const exact: string[] = [];
+    const near: string[] = [];
+    const tol = this.coarse ? 12 : 6;
+    for (const g of this.docG.querySelectorAll('path, rect, ellipse, circle, polygon, polyline, line, text')) {
+      if (g.closest('mask, clipPath, defs, pattern, [data-mask-preview]')) continue;
+      const holder = g.closest('[data-layer-id]');
+      if (!holder || holder.closest('[data-locked]')) continue;
+      const id = holder.getAttribute('data-layer-id')!;
+      const shape = g as SVGGeometryElement;
+      const ctm = shape.getScreenCTM?.();
+      if (!ctm) continue;
+      const pt = new DOMPoint(client.x, client.y).matrixTransform(ctm.inverse());
+      let hit = false;
+      try {
+        hit = typeof shape.isPointInFill === 'function' && (shape.isPointInFill(pt) || shape.isPointInStroke(pt));
+      } catch {
+        hit = false;
+      }
+      if (hit) {
+        exact.push(id);
+        continue;
+      }
+      // Thin or tiny things: close enough counts, after anything hit exactly.
+      try {
+        const b = shape.getBBox();
+        const k = tol / Math.sqrt(Math.abs(ctm.a * ctm.d - ctm.b * ctm.c) || 1);
+        if (pt.x >= b.x - k && pt.x <= b.x + b.width + k && pt.y >= b.y - k && pt.y <= b.y + b.height + k) near.push(id);
+      } catch {
+        /* not rendered */
+      }
+    }
+    const list = [...exact.reverse(), ...near.reverse()];
+    return [...new Set(list)];
+  }
+
+  /** A tap or click on the canvas: select what's there, or (again) what's under the selected layer. */
+  private tapSelect(client: Point): void {
+    const ed = this.editor;
+    const ids = this.layersAt(client);
+    if (!ids.length) return;
+    const cur = ed.selection.length === 1 ? ids.indexOf(ed.selection[0]) : -1;
+    const i = cur >= 0 ? (cur + 1) % ids.length : 0;
+    if (ids[i] === ed.selection[0] && ed.selection.length === 1) return;
+    ed.select([ids[i]]);
+    const name = (id: string) => findLayer(ed.document, id)?.name || 'layer';
+    this.showToast(ids.length > 1 ? `${name(ids[i])} · ${i + 1} of ${ids.length} here · tap again for ${name(ids[(i + 1) % ids.length])}` : name(ids[i]));
+  }
+
   /** Whether a single pointer dragging the canvas may pan the view. */
   private panAllowed(): boolean {
     const p = this.editor.preferences;
@@ -424,8 +567,12 @@ export class CanvasView {
 
   renderOverlay(): void {
     clear(this.overlay);
+    clear(this.loupe);
     const ed = this.editor;
-    if (ed.preview) return;
+    if (ed.preview) {
+      this.updateNudge();
+      return;
+    }
     const pts = (corners: Point[]) => corners.map((p) => `${p.x},${p.y}`).join(' ');
 
     if (ed.hoverId && !ed.selection.includes(ed.hoverId) && !this.drag) {
@@ -451,6 +598,9 @@ export class CanvasView {
       if (f && !f.layer.locked) this.renderHandles(f);
       if (ed.isTabOpen('variables')) this.renderAnchors(ed.selection[0]);
     }
+    this.renderReadout();
+    this.renderLoupe();
+    this.updateNudge();
 
   }
 
@@ -547,6 +697,60 @@ export class CanvasView {
     }
   }
 
+  /** Values beside the pointer while dragging (Preferences: Readout). */
+  private renderReadout(): void {
+    const d = this.drag;
+    const v = this.virt;
+    if (!d || !v || !this.editor.preferences.readout) return;
+    const doc = this.editor.document;
+    const fmt = (n: number) => String(Math.round(n * 10) / 10);
+    let text = '';
+    if (d.kind === 'move' && d.moved) {
+      const l = findLayer(doc, d.items[0].id);
+      if (l) text = `x ${fmt(l.x)} · y ${fmt(l.y)}`;
+    } else if (d.kind === 'scale') {
+      const l = findLayer(doc, d.id);
+      if (l?.type === 'shape') text = `w ${fmt(l.width)} · h ${fmt(l.height)}`;
+      else if (l?.type === 'group') text = `scale ${Math.round(l.scale * 100) / 100}`;
+    } else if (d.kind === 'anchor') {
+      const a = findLayer(doc, d.id)?.bindings?.find((b) => b.id === d.bindingId)?.anchor;
+      if (a) text = a.layer || a.unit === 'px' ? `x ${fmt(a.x)} · y ${fmt(a.y)}` : `x ${Math.round(a.x * 100)}% · y ${Math.round(a.y * 100)}%`;
+    }
+    if (!text) return;
+    const touch = this.pointerType !== 'mouse';
+    const at = { x: v.at.x + (touch ? -40 : 16), y: v.at.y + (touch ? 56 : -16) };
+    if (this.editor.preferences.fineFactor && (this.fineOn || this.fineHeld)) text += ' · fine';
+    this.overlay.appendChild(svgEl('text', { class: 'slt-readout', x: Math.max(4, at.x), y: Math.max(14, at.y) }, [text]));
+  }
+
+  /** On touch: a close-up of what's under the finger, beside it, while dragging (Preferences: Magnifier). */
+  private renderLoupe(): void {
+    const d = this.drag;
+    const v = this.virt;
+    if (!d || !v || this.pointerType === 'mouse' || !this.editor.preferences.magnifier) return;
+    if (!(d.kind === 'scale' || d.kind === 'rotate' || d.kind === 'anchor' || (d.kind === 'move' && d.moved))) return;
+    const R = this.coarse ? 56 : 48;
+    const k = 2.5;
+    const w = this.stageWrap.clientWidth || 400;
+    const p = v.at;
+    const cx = Math.min(Math.max(p.x, R + 6), w - R - 6);
+    let cy = p.y - R - 54;
+    if (cy < R + 6) cy = p.y + R + 54;
+    const clipId = `${this.idPrefix}loupe-clip`;
+    this.loupe.append(
+      svgEl('clipPath', { id: clipId }, [svgEl('circle', { cx, cy, r: R })]),
+      svgEl('circle', { class: 'slt-loupe-bg', cx, cy, r: R }),
+      svgEl('g', { 'clip-path': `url(#${clipId})` }, [
+        svgEl('g', { transform: `translate(${cx} ${cy}) scale(${k}) translate(${-p.x} ${-p.y})` }, [
+          // the drawing only: the handle under the finger would fill it
+          svgEl('use', { href: `#${this.viewG.id}` }),
+        ]),
+      ]),
+      svgEl('circle', { class: 'slt-loupe-ring', cx, cy, r: R }),
+      svgEl('path', { class: 'slt-loupe-cross', d: `M${cx - 7} ${cy}H${cx + 7}M${cx} ${cy - 7}V${cy + 7}` }),
+    );
+  }
+
   /** Markers for binding anchors (pivot / fixed edge) of the selected layer, drawn from the resolved geometry. */
   private renderAnchors(id: string): void {
     // Anchors are points of the stored (unbound) layer; the binding keeps them fixed,
@@ -615,7 +819,11 @@ export class CanvasView {
   private onPointerDown(e: PointerEvent): void {
     const screen = this.eventScreen(e);
     this.pointers.set(e.pointerId, screen);
-    if (this.pointers.size === 1) this.pointerType = e.pointerType || 'mouse';
+    if (this.pointers.size === 1) {
+      this.pointerType = e.pointerType || 'mouse';
+      this.virt = { last: screen, at: screen };
+      this.tapStart = e.button === 0 && !this.editor.preview && !this.spaceDown ? { screen, client: { x: e.clientX, y: e.clientY }, time: Date.now() } : null;
+    } else this.tapStart = null;
     if (this.pointers.size === 2 && this.editor.preferences.lockView) {
       // Locked: a second finger never zooms; it just ends what the first was doing.
       if (this.drag && (this.drag.kind === 'move' || this.drag.kind === 'scale' || this.drag.kind === 'rotate' || this.drag.kind === 'anchor')) this.editor.store.endTransaction();
@@ -670,6 +878,7 @@ export class CanvasView {
     const handleEl = e.target instanceof Element ? e.target.closest('[data-handle]') : null;
     if (handleEl && this.editor.selection.length === 1) {
       const name = handleEl.getAttribute('data-handle')!;
+      if (name !== 'move') this.tapStart = null; // (a still tap on the move handle still selects what's under it)
       if (name.startsWith('anchor:')) {
         this.startAnchorDrag(name.slice(7));
         this.stage.setPointerCapture(e.pointerId);
@@ -807,9 +1016,19 @@ export class CanvasView {
   }
 
   private onPointerMove(e: PointerEvent): void {
-    const screen = this.eventScreen(e);
+    let screen = this.eventScreen(e);
     if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, screen);
     const d = this.drag;
+    if (this.tapStart && Math.hypot(screen.x - this.tapStart.screen.x, screen.y - this.tapStart.screen.y) > (this.coarse ? 10 : 5)) this.tapStart = null;
+    // Fine drag: the point the drag acts on follows the pointer more slowly.
+    this.fineHeld = e.ctrlKey || e.metaKey;
+    if (this.virt) {
+      const slow = d && (d.kind === 'move' || d.kind === 'scale' || d.kind === 'rotate' || d.kind === 'anchor') && (this.fineOn || this.fineHeld);
+      const f = slow ? this.editor.preferences.fineFactor : 1;
+      const at = { x: this.virt.at.x + (screen.x - this.virt.last.x) * f, y: this.virt.at.y + (screen.y - this.virt.last.y) * f };
+      this.virt = { last: screen, at };
+      if (d && (d.kind === 'move' || d.kind === 'scale' || d.kind === 'rotate' || d.kind === 'anchor')) screen = at;
+    }
     if (d?.kind === 'pinch') {
       if (this.pointers.size < 2) return;
       const [a, b] = [...this.pointers.values()];
@@ -968,7 +1187,14 @@ export class CanvasView {
     this.pointers.delete(e.pointerId);
     if (this.stage.hasPointerCapture(e.pointerId)) this.stage.releasePointerCapture(e.pointerId);
     const d = this.drag;
-    if (!d) return;
+    const tap = this.tapStart;
+    this.tapStart = null;
+    const tapped = !!tap && e.type === 'pointerup' && Date.now() - tap.time < 500 && this.editor.preferences.tapSelect &&
+      (!d || d.kind === 'press' || d.kind === 'pan' || (d.kind === 'move' && !d.moved));
+    if (!d) {
+      if (tapped) this.tapSelect(tap!.client);
+      return;
+    }
     if (d.kind === 'pinch') {
       if (this.pointers.size === 0) this.drag = null;
       return;
@@ -976,6 +1202,7 @@ export class CanvasView {
     this.drag = null;
     this.activeHandle = null;
     this.lifted = false;
+    if (tapped) queueMicrotask(() => this.tapSelect(tap!.client));
     switch (d.kind) {
       case 'interact':
         if (e.type === 'pointercancel') this.editor.interaction.cancel();

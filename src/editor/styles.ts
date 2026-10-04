@@ -220,6 +220,10 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-rotate-label { fill: var(--_slt-text); font: 600 12px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; }
 .slt-overlay .slt-pivot { stroke: var(--_slt-accent); stroke-width: 1; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; opacity: var(--_slt-marker-op, 1); }
+.slt-overlay .slt-readout { fill: var(--_slt-text); font: 600 12px var(--_slt-font); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 4px; stroke-linejoin: round; }
+.slt-loupe-bg { fill: var(--_slt-canvas); }
+.slt-loupe-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 2.5; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35)); }
+.slt-loupe-cross { stroke: var(--_slt-accent); stroke-width: 1.2; }
 .slt-overlay .slt-anchor-link { stroke: var(--_slt-accent); stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor-ring { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-anchor-label { fill: var(--_slt-text); font: 600 11px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
@@ -245,6 +249,19 @@ export const EDITOR_STYLES = `
 .slt-viewpad-btn:hover { background: var(--_slt-hover); }
 .slt-viewpad-btn .slt-icon svg { width: 13px; height: 13px; }
 input.slt-viewpad-zoom { writing-mode: vertical-lr; direction: rtl; width: 18px; height: 50px; margin: 0; accent-color: var(--_slt-accent); }
+
+/* The nudge pad (touch) */
+.slt-nudge { position: absolute; bottom: 10px; left: 10px; display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 34px); gap: 3px; padding: 6px; background: var(--_slt-panel); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); touch-action: none; user-select: none; -webkit-user-select: none; }
+.slt-nudge[data-side="right"] { left: auto; right: 10px; }
+.slt-nudge[hidden] { display: none; }
+.slt-nudge button { display: flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--_slt-border); border-radius: 7px; background: var(--_slt-panel-2); color: var(--_slt-text); font: 600 11px var(--_slt-font); cursor: pointer; }
+.slt-nudge button:active { background: var(--_slt-selected); }
+.slt-nudge .slt-nudge-step { background: var(--_slt-accent); color: var(--_slt-accent-text); border-color: var(--_slt-accent); }
+.slt-nudge .slt-nudge-fine { font-size: 10px; }
+.slt-nudge .slt-nudge-fine[data-active] { background: var(--_slt-accent); color: var(--_slt-accent-text); border-color: var(--_slt-accent); }
+.slt-nudge .slt-nudge-left { transform: rotate(180deg); }
+.slt-canvas-toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 20px); padding: 6px 12px; border-radius: 16px; background: var(--_slt-text); color: var(--_slt-panel); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+.slt-canvas-toast[data-show] { opacity: 0.94; }
 
 /* Preferences */
 .slt-prefs-backdrop { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }

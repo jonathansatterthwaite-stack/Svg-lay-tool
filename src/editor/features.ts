@@ -39,8 +39,8 @@ export interface EditorFeatures {
   /** Show the thumbnail strip beside the canvas for switching layers. */
   layerStrip: boolean;
   /**
-   * How the canvas moves the selected layer. Selection itself only ever
-   * changes from the layer strip or the Layers panel, never from the canvas.
+   * How the canvas moves the selected layer. Selection changes from the layer
+   * strip or the Layers panel, or (Preferences: Tap to select) a tap on the canvas.
    * `hold` (default): dragging pans the view; press-and-hold on the selected
    * layer picks it up to move it. `direct`: dragging the selected layer moves
    * it straight away; dragging anywhere else pans.

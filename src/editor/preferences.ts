@@ -26,6 +26,16 @@ export interface EditorPreferences {
   viewPad: 'auto' | 'right' | 'left' | 'hidden';
   /** Nothing on the canvas pans or zooms the view (the pad and the toolbar still do). */
   lockView: boolean;
+  /** Values beside the pointer while dragging: x and y, width and height, the angle. */
+  readout: boolean;
+  /** How fast a fine drag goes (Ctrl/⌘ held, or the nudge pad's Fine on touch). */
+  fineFactor: 0.5 | 0.25 | 0.1;
+  /** On touch, a magnified view of what's under the finger, beside it, while dragging. */
+  magnifier: boolean;
+  /** On touch, arrows that move the selection by 1 (or 10) while a layer is selected. */
+  nudgePad: boolean;
+  /** A tap or click on the canvas selects what's there; again on the same spot, what's underneath. */
+  tapSelect: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -37,6 +47,11 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   canvasTouch: 'pad',
   viewPad: 'auto',
   lockView: false,
+  readout: true,
+  fineFactor: 0.25,
+  magnifier: true,
+  nudgePad: true,
+  tapSelect: true,
 };
 
 const clampNum = (v: unknown, lo: number, hi: number, d: number) =>
@@ -56,13 +71,19 @@ export function resolvePreferences(p: Partial<EditorPreferences> | null | undefi
     canvasTouch: oneOf(q.canvasTouch, ['pan', 'pad'] as const, d.canvasTouch),
     viewPad: oneOf(q.viewPad, ['auto', 'right', 'left', 'hidden'] as const, d.viewPad),
     lockView: q.lockView === true,
+    readout: q.readout !== false,
+    fineFactor: ([0.5, 0.25, 0.1] as const).includes(q.fineFactor as never) ? (q.fineFactor as 0.5 | 0.25 | 0.1) : d.fineFactor,
+    magnifier: q.magnifier !== false,
+    nudgePad: q.nudgePad !== false,
+    tapSelect: q.tapSelect !== false,
   };
 }
 
-type PageId = 'handles' | 'view';
+type PageId = 'handles' | 'view' | 'precision';
 const PAGES: { id: PageId; label: string }[] = [
   { id: 'handles', label: 'Handles' },
   { id: 'view', label: 'Canvas & view' },
+  { id: 'precision', label: 'Precision' },
 ];
 
 /** The Preferences window (a dialog on desktop, a sheet from the bottom on mobile). */
@@ -145,6 +166,19 @@ export class PreferencesDialog {
         choice('Move handle', 'A grab point in the middle of the selection (beside it when the shape is small): drag it to move the layer straight away', p.moveHandle,
           [['always', 'Always'], ['touch', 'Touch only'], ['off', 'Off']], (v) => set({ moveHandle: v })),
         (this.previewSlot = el('div', { class: 'slt-prefs-preview-slot' }, [this.preview()])),
+      );
+    } else if (this.page === 'precision') {
+      this.previewSlot = null;
+      const m = ed.modKey();
+      rows.push(
+        el('h4', {}, ['Precision']),
+        choice('Fine drag', `Hold ${m} while dragging (on touch, Fine on the nudge pad): moves, resizes and turns at this speed`, String(p.fineFactor) as '0.5' | '0.25' | '0.1',
+          [['0.5', '½'], ['0.25', '¼'], ['0.1', '⅒']], (v) => set({ fineFactor: Number(v) as 0.5 | 0.25 | 0.1 })),
+        toggle('Readout while dragging', 'x and y, width and height, or the angle beside the pointer', p.readout, (v) => set({ readout: v })),
+        toggle('Magnifier (touch)', "While dragging, a close-up of what's under your finger, beside it", p.magnifier, (v) => set({ magnifier: v })),
+        toggle('Nudge pad (touch)', 'Arrows that move the selected layer by 1, or 10 (by the grid with Snap on)', p.nudgePad, (v) => set({ nudgePad: v })),
+        el('h4', {}, ['Selecting']),
+        toggle('Tap to select', "A tap or click on the canvas selects what's there; tap the same spot again for what's underneath", p.tapSelect, (v) => set({ tapSelect: v })),
       );
     } else {
       this.previewSlot = null;

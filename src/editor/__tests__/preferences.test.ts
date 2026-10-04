@@ -14,6 +14,10 @@ describe('resolvePreferences', () => {
     const p = resolvePreferences({ moveHandle: 'sometimes', handleOpacity: 'x', lockView: 'yes', extra: 1 } as never);
     expect(p).toEqual(DEFAULT_PREFERENCES);
   });
+  it('precision settings', () => {
+    expect(resolvePreferences({ fineFactor: 0.1, readout: false, tapSelect: false })).toMatchObject({ fineFactor: 0.1, readout: false, tapSelect: false, magnifier: true });
+    expect(resolvePreferences({ fineFactor: 0.3 as never }).fineFactor).toBe(0.25);
+  });
   it('null handle size means pick by pointer', () => {
     expect(resolvePreferences({ handleSize: null }).handleSize).toBeNull();
   });
