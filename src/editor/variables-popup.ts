@@ -106,7 +106,8 @@ export class VariablesPopup {
     else if (this.group === 'time') list = TIME_VARIABLES.map((t) => key(t.name, t.name, 'slt-key-value', t.label));
     else if (this.group.startsWith('host:')) {
       const g = ed.variableGroups.find((x) => `host:${x.id}` === this.group);
-      list = (g?.variables ?? []).filter((v) => /^[A-Za-z_]\w*$/.test(v.name)).map((v) => key(v.name, v.name, 'slt-key-value', v.label ?? ''));
+      // (a name ending in _, like "global_", is the host's explanation, not a value)
+      list = (g?.variables ?? []).filter((v) => /^[A-Za-z_]\w*$/.test(v.name) && !v.name.endsWith('_')).map((v) => key(v.name, v.name, 'slt-key-value', v.label ?? ''));
     } else {
       list = EXPR_REFERENCE.filter((r) => r.group === this.group && r.name).map((r) => key(r.name, r.signature, 'slt-key-fn', `${r.signature}: ${r.label}`));
       if (this.group === 'logic') list.push(...['<', '>', '<=', '>=', '==', '!=', '&&', '||', '!', '?', ':'].map((s) => key(s, ` ${s} `.replace(/^ !$/, '!'), 'slt-key-sym')));
