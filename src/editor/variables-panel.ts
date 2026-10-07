@@ -106,7 +106,7 @@ export class VariablesPanel {
     const groups: [string, string, 'math' | 'logic' | 'animation'][] = [['fn-math', 'Math', 'math'], ['fn-logic', 'Logic', 'logic'], ['fn-animation', 'Animation', 'animation']];
     for (const [id, title, group] of groups) {
       const refs = EXPR_REFERENCE.filter((r) => r.group === group);
-      children.push(this.referenceList(id, title, refs.map((r) => ({ name: r.signature, label: r.label, insert: r.name ? r.signature : undefined })), refs.filter((r) => r.name).length));
+      children.push(this.referenceList(id, title, refs.map((r) => ({ name: r.signature, label: r.label, insert: r.name ? r.signature : undefined })), refs.length));
     }
     children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label, value: fmtValue(env[t.name]), insert: t.name }))));
     for (const g of this.editor.variableGroups) {
