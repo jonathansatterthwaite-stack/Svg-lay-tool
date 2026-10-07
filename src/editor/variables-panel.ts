@@ -141,6 +141,14 @@ export class VariablesPanel {
     input.setSelectionRange(selA, selB);
     this.lastFormula = input.dataset.formula ?? null;
     input.dispatchEvent(new Event('input')); // its result updates; it's saved when you leave it
+    // (a change made here doesn't raise "change" by itself on leaving: do it then)
+    if (!input.dataset.pending) {
+      input.dataset.pending = '1';
+      input.addEventListener('blur', () => {
+        delete input.dataset.pending;
+        input.dispatchEvent(new Event('change'));
+      }, { once: true });
+    }
   }
 
   /** A collapsible read-only list of names (or signatures), descriptions and optional current values. */
