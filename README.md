@@ -581,6 +581,15 @@ more slowly), `magnifier` (touch: a close-up of what's under the finger while
 dragging), `nudgePad` (touch: arrows moving the selection by 1 or 10, by the
 grid with Snap on; held, they repeat) and `tapSelect`.
 
+Display and phone (Preferences): `shapeOutline` (a thin line around the
+selected layer's own shape, besides its box) and `foldTools` (phone layout:
+the tool tabs fold down while a move, resize, turn or pan is under way).
+
+The Variables tab lists the formula functions in three groups, **Math**,
+**Logic** and **Animation** (`EXPR_REFERENCE[i].group`). Clicking one (or a
+Time or host value) puts it into the formula last written in, at the caret; a
+function's first argument is left selected to type over.
+
 Snapping (Preferences → Snapping): `snapToShapes` (moving a layer lines its
 edges and centre up with other layers' and the canvas's, showing pink guide
 lines; the grid still takes an axis that didn't line up; off during a fine
