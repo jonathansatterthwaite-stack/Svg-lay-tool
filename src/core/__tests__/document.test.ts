@@ -73,6 +73,11 @@ describe('document ops', () => {
     expect(findLayer(moveLayer(d, c.id, null, 0), c.id)).toEqual(findLayer(d, c.id));
   });
 
+  it('keeps a document\'s own colour mode (and drops a wrong one)', () => {
+    expect(normalizeDocument({ colorMode: 'full' }).colorMode).toBe('full');
+    expect(normalizeDocument({ colorMode: 'rainbow' }).colorMode).toBeUndefined();
+  });
+
   it('groups and ungroups without moving anything on screen', () => {
     const { doc, a, b, c } = sample();
     const before = [a, b, c].map((l) => layerWorldBounds(doc, l.id)!);

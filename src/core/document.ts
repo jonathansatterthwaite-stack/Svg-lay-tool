@@ -696,6 +696,7 @@ export function normalizeDocument(input: unknown): SvgDocument {
     variables: Array.isArray(raw.variables) ? raw.variables.map(normalizeVariable).filter((v): v is Variable => !!v) : [],
     grid: normalizeGrid(raw.grid),
     ...(Array.isArray(raw.sounds) && raw.sounds.length ? { sounds: normalizeSounds(raw.sounds) } : {}),
+    ...(raw.colorMode === 'full' || raw.colorMode === 'monochrome' || raw.colorMode === 'grayscale' ? { colorMode: raw.colorMode } : {}),
   };
 }
 

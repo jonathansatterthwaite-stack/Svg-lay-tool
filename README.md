@@ -198,6 +198,10 @@ and **Attach to** picks a layer (*Nothing* detaches, keeping the point where it
 is). A size binding's fixed edge stays a fraction (`anchorUnits(target)`).
 Helpers: `anchorWorldPoint`, `layerCentreWorld`, `anchorAttachable`.
 
+A document can say how it's meant to be coloured, `colorMode: 'full' | 'monochrome' | 'grayscale'`,
+for a host that offers the choice (Pack Rat: one colour, tinted like its icons, or the drawing's own
+colours); the host opens the editor with that `features.colorMode` (`setFeatures` switches it live).
+
 Bindable targets: `x`, `y`, `rotation`, `opacity`, `visible`, shape `width`
 and `height`, group `scale`, shape `params.<key>`, and every numeric field or
 `enabled` flag of a modifier (`modifiers.<id>.<field>`), so a mask, an effect

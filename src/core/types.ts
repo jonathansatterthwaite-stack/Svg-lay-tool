@@ -356,6 +356,11 @@ export interface SvgDocument {
   sounds?: SoundAsset[];
   /** Editing grid (never rendered into exports). */
   grid?: GridSettings;
+  /**
+   * How it's meant to be coloured, for a host that offers a choice: `full` (its own colours),
+   * `monochrome` (one colour, the host's) or `grayscale`. Unset: the host's choice.
+   */
+  colorMode?: ColorMode;
 }
 
 /** A short sound kept in a document: an audio data URL (size-capped when loaded: see normalizeDocument). */
