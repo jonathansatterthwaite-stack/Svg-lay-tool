@@ -492,6 +492,12 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     });
   }
 
+  /** Phone layout: fold the tool tabs down (Preferences: Fold the tools away), giving the canvas the room. */
+  foldTools(): void {
+    if (this.layout !== 'mobile' || !this.sheetOpen || !this.preferences.foldTools) return;
+    this.showTab(this.activeTab, false);
+  }
+
   private toggleTab(tab: MobileTab): void {
     // Desktop tabs cannot collapse (the side column keeps its width); mobile ones can.
     if (this.layout === 'mobile' && this.activeTab === tab && this.sheetOpen) this.showTab(tab, false);

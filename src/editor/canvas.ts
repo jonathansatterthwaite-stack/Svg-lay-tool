@@ -601,6 +601,7 @@ export class CanvasView {
       const cls = this.lifted && this.drag?.kind === 'move' ? 'slt-sel-outline slt-lifted' : 'slt-sel-outline';
       this.overlay.appendChild(svgEl('polygon', { class: cls, points: pts(rectCorners(f.box).map(f.toScreen)) }));
     }
+    if (ed.selection.length === 1 && ed.preferences.shapeOutline && !rotating) this.renderShapeOutline(ed.selection[0]);
     if (this.drag?.kind === 'press') {
       // Feedback while a hold is charging: ring around the press point.
       this.overlay.appendChild(svgEl('circle', { class: 'slt-press-ring', cx: this.drag.startScreen.x, cy: this.drag.startScreen.y, r: this.coarse ? 26 : 16 }));
@@ -785,6 +786,20 @@ export class CanvasView {
     this.overlay.appendChild(svgEl('polyline', { class: 'slt-trail-path', points: centres.map((p) => `${p.x},${p.y}`).join(' ') }));
     const last = centres[centres.length - 1];
     this.overlay.appendChild(svgEl('circle', { class: 'slt-trail-end', cx: last.x, cy: last.y, r: 3 }));
+  }
+
+  /** A thin line around the selected layer's own shape: a copy of what's drawn, outlined. */
+  private renderShapeOutline(id: string): void {
+    const src = [...this.docG.querySelectorAll('[data-layer-id]')].find((n) => n.getAttribute('data-layer-id') === id) as SVGGraphicsElement | undefined;
+    const parent = src?.parentNode as SVGGraphicsElement | null;
+    const m = parent?.getCTM?.();
+    const stage = this.stage.getCTM?.();
+    if (!src || !m || !stage) return;
+    const k = stage.inverse().multiply(m); // the copy's parent frame, in the stage's coordinates
+    const copy = src.cloneNode(true) as SVGElement;
+    copy.removeAttribute('data-layer-id');
+    for (const n of copy.querySelectorAll('[data-layer-id]')) n.removeAttribute('data-layer-id');
+    this.overlay.appendChild(svgEl('g', { class: 'slt-shape-outline', transform: `matrix(${k.a} ${k.b} ${k.c} ${k.d} ${k.e} ${k.f})` }, [copy]));
   }
 
   /** Values beside the pointer while dragging (Preferences: Readout). */
@@ -1109,7 +1124,11 @@ export class CanvasView {
     let screen = this.eventScreen(e);
     if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, screen);
     const d = this.drag;
-    if (this.tapStart && Math.hypot(screen.x - this.tapStart.screen.x, screen.y - this.tapStart.screen.y) > (this.coarse ? 10 : 5)) this.tapStart = null;
+    if (this.tapStart && Math.hypot(screen.x - this.tapStart.screen.x, screen.y - this.tapStart.screen.y) > (this.coarse ? 10 : 5)) {
+      this.tapStart = null;
+      // Working on the canvas (a move, resize, turn or pan, not a tap): the phone's tools fold away.
+      if (d && d.kind !== 'press' && d.kind !== 'interact') this.editor.foldTools();
+    }
     // Fine drag: the point the drag acts on follows the pointer more slowly.
     this.fineHeld = e.ctrlKey || e.metaKey;
     if (this.virt) {

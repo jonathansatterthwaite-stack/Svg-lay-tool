@@ -44,6 +44,10 @@ export interface EditorPreferences {
   snapStartsOn: boolean;
   /** Faint copies of the selected layer along a variable's range (Variables tab, Try it). */
   motionTrail: boolean;
+  /** A thin line around the selected layer's own shape (not just its box). */
+  shapeOutline: boolean;
+  /** Phone layout: the tool tabs fold away while you move, resize or turn something, or move the view. */
+  foldTools: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -64,6 +68,8 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   rotationStep: 15,
   snapStartsOn: false,
   motionTrail: true,
+  shapeOutline: true,
+  foldTools: true,
 };
 
 const clampNum = (v: unknown, lo: number, hi: number, d: number) =>
@@ -92,6 +98,8 @@ export function resolvePreferences(p: Partial<EditorPreferences> | null | undefi
     rotationStep: ([5, 15, 30, 45] as const).includes(q.rotationStep as never) ? (q.rotationStep as 5 | 15 | 30 | 45) : d.rotationStep,
     snapStartsOn: q.snapStartsOn === true,
     motionTrail: q.motionTrail !== false,
+    shapeOutline: q.shapeOutline !== false,
+    foldTools: q.foldTools !== false,
   };
 }
 
@@ -183,6 +191,7 @@ export class PreferencesDialog {
         slider('Touch area', "Handles catch a touch or click this far beyond what's drawn", p.touchArea, 0, 24, 1, (v) => `+${v} px`, (v) => slide({ touchArea: v })),
         choice('Move handle', 'A grab point in the middle of the selection (beside it when the shape is small): drag it to move the layer straight away', p.moveHandle,
           [['always', 'Always'], ['touch', 'Touch only'], ['off', 'Off']], (v) => set({ moveHandle: v })),
+        toggle('Outline the selected shape', "A thin line around the selected layer's own shape, as well as its box", p.shapeOutline, (v) => set({ shapeOutline: v })),
         (this.previewSlot = el('div', { class: 'slt-prefs-preview-slot' }, [this.preview()])),
       );
     } else if (this.page === 'snapping') {
@@ -252,6 +261,7 @@ export class PreferencesDialog {
         choice('Touching the canvas', 'Only the pad: a stray finger never moves the view. Two fingers always pinch to zoom.', p.canvasTouch,
           [['pan', 'Moves the view'], ['pad', 'Only the pad']], (v) => set({ canvasTouch: v })),
         toggle('Lock the view', 'Dragging, pinching and scrolling on the canvas never pan or zoom (the pad and the toolbar still do)', p.lockView, (v) => set({ lockView: v })),
+        toggle('Fold the tools away (phone layout)', 'The tool tabs fold down while you move, resize or turn something, or move the view, to give the canvas the room; tap a tab to bring them back', p.foldTools, (v) => set({ foldTools: v })),
         el('h4', {}, ['View pad']),
         choice('View pad', 'Pan, zoom, fit, zoom to the selection. Auto: shown on touch.', p.viewPad,
           [['auto', 'Auto'], ['right', 'Right'], ['left', 'Left'], ['hidden', 'Hidden']], (v) => set({ viewPad: v })),

@@ -47,6 +47,10 @@ export class VariablesPanel {
 
   constructor(private editor: SvgLayEditor) {
     this.el = el('div', { class: 'slt-props slt-variables' });
+    this.el.addEventListener('focusin', (e) => {
+      const key = (e.target as HTMLElement).dataset?.formula;
+      if (key) this.lastFormula = key;
+    });
   }
 
   render(): void {
@@ -98,17 +102,49 @@ export class VariablesPanel {
 
     // Reference lists: the formula functions, the time built-ins and any groups the host app registered.
     const env = this.editor.env();
-    const functionCount = EXPR_REFERENCE.filter((r) => r.name).length;
-    children.push(this.referenceList('functions', 'Functions', EXPR_REFERENCE.map((r) => ({ name: r.signature, label: r.label })), functionCount));
-    children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label, value: fmtValue(env[t.name]) }))));
+    // Functions in three lists; a click puts one into the formula being written (see insertSnippet).
+    const groups: [string, string, 'math' | 'logic' | 'animation'][] = [['fn-math', 'Math', 'math'], ['fn-logic', 'Logic', 'logic'], ['fn-animation', 'Animation', 'animation']];
+    for (const [id, title, group] of groups) {
+      const refs = EXPR_REFERENCE.filter((r) => r.group === group);
+      children.push(this.referenceList(id, title, refs.map((r) => ({ name: r.signature, label: r.label, insert: r.name ? r.signature : undefined })), refs.filter((r) => r.name).length));
+    }
+    children.push(this.referenceList('time', 'Time', TIME_VARIABLES.map((t) => ({ name: t.name, label: t.label, value: fmtValue(env[t.name]), insert: t.name }))));
     for (const g of this.editor.variableGroups) {
-      children.push(this.referenceList(g.id, g.title, g.variables.map((v) => ({ name: v.name, label: v.label ?? '', value: fmtValue(env[v.name]) }))));
+      children.push(this.referenceList(g.id, g.title, g.variables.map((v) => ({ name: v.name, label: v.label ?? '', value: fmtValue(env[v.name]), insert: /^[A-Za-z_]\w*$/.test(v.name) ? v.name : undefined }))));
     }
     return section('Variables', children, add);
   }
 
+  /** The formula box last written in (its data-formula key), where clicked functions and names go. */
+  private lastFormula: string | null = null;
+
+  /**
+   * Put a function (or a name) into the formula being written, at its caret, replacing what's
+   * selected; a function's first argument is left selected, to type over. With no formula written in
+   * yet, the first one in the panel.
+   */
+  private insertSnippet(text: string): void {
+    const boxes = [...this.el.querySelectorAll<HTMLInputElement>('input[data-formula]')];
+    const input = boxes.find((b) => b.dataset.formula === this.lastFormula) ?? boxes[0];
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.value = input.value.slice(0, start) + text + input.value.slice(end);
+    const open = text.indexOf('(');
+    let selA = start + text.length, selB = selA;
+    if (open >= 0 && !text.endsWith('()')) {
+      const close = text.search(/[,)]/);
+      selA = start + open + 1;
+      selB = start + (close > open ? close : text.length - 1);
+    }
+    input.focus();
+    input.setSelectionRange(selA, selB);
+    this.lastFormula = input.dataset.formula ?? null;
+    input.dispatchEvent(new Event('input')); // its result updates; it's saved when you leave it
+  }
+
   /** A collapsible read-only list of names (or signatures), descriptions and optional current values. */
-  private referenceList(id: string, title: string, items: { name: string; label: string; value?: string }[], count = items.length): HTMLElement {
+  private referenceList(id: string, title: string, items: { name: string; label: string; value?: string; insert?: string }[], count = items.length): HTMLElement {
     const open = this.expanded.has(id);
     const toggle = button([icon(open ? 'chevronDown' : 'chevronRight'), title, el('span', { class: 'slt-ref-count' }, [String(count)])], () => {
       if (open) this.expanded.delete(id);
@@ -121,13 +157,19 @@ export class VariablesPanel {
         el(
           'div',
           { class: 'slt-time-list' },
-          items.map((t) =>
-            el('div', { class: 'slt-time-row', title: t.label }, [
+          items.map((t) => {
+            const parts = [
               el('code', {}, [t.name]),
               el('span', { class: 'slt-grow' }, [t.label]),
               t.value === undefined ? null : el('span', { class: 'slt-time-value' }, [t.value]),
-            ]),
-          ),
+            ];
+            if (!t.insert) return el('div', { class: 'slt-time-row', title: t.label }, parts);
+            const b = el('button', { type: 'button', class: 'slt-time-row slt-snippet', title: `${t.label}. Click to put it into the formula you're writing.` }, parts);
+            // (keep the formula's caret: don't take the focus on press)
+            b.addEventListener('mousedown', (e) => e.preventDefault());
+            b.addEventListener('click', () => this.insertSnippet(t.insert!));
+            return b;
+          }),
         ),
       );
     }
@@ -194,7 +236,7 @@ export class VariablesPanel {
         result.classList.add('slt-binding-error');
       }
     };
-    const input = el('input', { class: 'slt-input slt-binding-expr', type: 'text', value: v.expression ?? '', spellcheck: false, placeholder: 'formula' });
+    const input = el('input', { class: 'slt-input slt-binding-expr', type: 'text', value: v.expression ?? '', spellcheck: false, placeholder: 'formula', dataset: { formula: `v:${v.id}` } });
     input.addEventListener('input', () => showResult(input.value));
     input.addEventListener('change', () => this.commitDoc((d) => upsertVariable(d, { ...v, expression: input.value })));
     input.addEventListener('keydown', (e) => {
@@ -262,7 +304,7 @@ export class VariablesPanel {
         result.classList.add('slt-binding-error');
       }
     };
-    const input = el('input', { class: 'slt-input slt-binding-expr', type: 'text', value: b.expression, spellcheck: false, placeholder: 'formula' });
+    const input = el('input', { class: 'slt-input slt-binding-expr', type: 'text', value: b.expression, spellcheck: false, placeholder: 'formula', dataset: { formula: `b:${b.id}` } });
     input.addEventListener('input', () => showResult(input.value));
     input.addEventListener('change', () => patch({ expression: input.value }));
     input.addEventListener('keydown', (e) => {

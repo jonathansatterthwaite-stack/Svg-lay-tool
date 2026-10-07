@@ -193,3 +193,13 @@ describe('bindings', () => {
     expect(normalizeDocument({ variables: [{ name: 'bad name', value: 1 }, { name: 'ok', value: 1 }] }).variables).toHaveLength(1);
   });
 });
+
+describe('formula reference groups', () => {
+  it('puts every entry in math, logic or animation', () => {
+    expect(EXPR_REFERENCE.every((r) => ['math', 'logic', 'animation'].includes(r.group))).toBe(true);
+    const of = (g: string) => EXPR_REFERENCE.filter((r) => r.group === g).map((r) => r.name || r.signature);
+    expect(of('animation')).toEqual(expect.arrayContaining(['ease', 'bounce', 'spring', 'since', 'lerp']));
+    expect(of('logic')).toEqual(expect.arrayContaining(['step', 'cond ? a : b']));
+    expect(of('math')).toEqual(expect.arrayContaining(['sin', 'clamp', 'pi']));
+  });
+});

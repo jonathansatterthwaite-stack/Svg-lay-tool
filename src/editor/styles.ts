@@ -222,6 +222,9 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-anchor { fill: var(--_slt-accent); stroke: #fff; stroke-width: 1.5; pointer-events: all; cursor: move; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-readout { fill: var(--_slt-text); font: 600 12px var(--_slt-font); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 4px; stroke-linejoin: round; }
 .slt-loupe-bg { fill: var(--_slt-canvas); }
+.slt-overlay .slt-shape-outline, .slt-overlay .slt-shape-outline * { fill: none !important; stroke: var(--_slt-accent) !important; stroke-width: 1.25px !important; vector-effect: non-scaling-stroke; opacity: var(--_slt-handle-op, 1); filter: none !important; mask: none !important; }
+.slt-snippet { width: 100%; border: 0; background: transparent; padding: 2px 4px; margin: 0 -4px; border-radius: 4px; text-align: left; font: inherit; cursor: pointer; }
+.slt-snippet:hover { background: var(--_slt-hover); color: var(--_slt-text); }
 .slt-overlay .slt-guide { stroke: #e0368f; stroke-width: 1; stroke-dasharray: 6 4; }
 .slt-overlay .slt-trail { fill: var(--_slt-accent); fill-opacity: 0.12; stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 3 3; }
 .slt-overlay .slt-trail-path { fill: none; stroke: var(--_slt-accent); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: 0.8; }
