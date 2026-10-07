@@ -604,6 +604,11 @@ changes), and a **motion trail** (`motionTrail`): faint outlines of the layer
 at nine steps across that variable's range, joined by a path. Preferences also
 lists every shortcut (Shortcuts page).
 
+`layout: 'auto'` also picks the mobile layout for a short screen (under 520 px
+tall, under 1200 px wide: a phone turned sideways); wider than tall, it puts
+the tools beside the canvas and the tabs in a rail down the right
+(`data-landscape` on the root).
+
 On the mobile layout, while the view bar shows, the toolbar leaves its zoom and fit
 buttons to the view bar. **F** zooms to the selection (the whole drawing when
 nothing is selected).

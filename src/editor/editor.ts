@@ -281,11 +281,25 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.root.appendChild(this.rootEl);
 
     const layout = options.layout ?? 'auto';
+    // Narrow, or short (a phone turned sideways): the mobile layout; wider than tall, its tools
+    // stand beside the canvas (data-landscape) instead of below it.
+    const bp = options.mobileBreakpoint ?? 700;
+    const pick = (w: number, h: number) => (w < bp || (h > 0 && h < 520 && w < 1200) ? 'mobile' : 'desktop');
+    const orient = (w: number, h: number) => {
+      if (this.currentLayout === 'mobile' && h > 0 && w > h * 1.25) this.rootEl.dataset.landscape = '';
+      else delete this.rootEl.dataset.landscape;
+    };
     if (layout === 'auto' && typeof ResizeObserver !== 'undefined') {
-      this.applyLayout(this.host.clientWidth > 0 && this.host.clientWidth < (options.mobileBreakpoint ?? 700) ? 'mobile' : 'desktop');
+      const w0 = this.host.clientWidth, h0 = this.host.clientHeight;
+      this.applyLayout(w0 > 0 ? pick(w0, h0) : 'desktop');
+      orient(w0, h0);
       this.layoutObserver = new ResizeObserver((entries) => {
         const w = entries[0]?.contentRect.width ?? this.host.clientWidth;
-        if (w > 0) this.applyLayout(w < (options.mobileBreakpoint ?? 700) ? 'mobile' : 'desktop');
+        const h = entries[0]?.contentRect.height ?? this.host.clientHeight;
+        if (w > 0) {
+          this.applyLayout(pick(w, h));
+          orient(w, h);
+        }
       });
       this.layoutObserver.observe(this.host);
     } else {

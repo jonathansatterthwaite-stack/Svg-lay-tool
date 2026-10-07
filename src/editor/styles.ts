@@ -119,6 +119,14 @@ export const EDITOR_STYLES = `
 .slt-root[data-layout="mobile"][data-no-toolbar] { grid-template-rows: minmax(0, 1fr) minmax(0, 42%) auto !important; grid-template-areas: "canvas" "sheet" "tabs" !important; }
 .slt-root[data-layout="mobile"][data-sheet-closed] { grid-template-rows: auto minmax(0, 1fr) 0 auto !important; }
 .slt-root[data-layout="mobile"][data-sheet-closed][data-no-toolbar] { grid-template-rows: minmax(0, 1fr) 0 auto !important; }
+/* Sideways (wider than tall): the canvas on the left, the tools beside it, the tabs a rail on the right */
+.slt-root[data-layout="mobile"][data-landscape] { grid-template-columns: minmax(0, 1fr) minmax(0, 42%) auto !important; grid-template-rows: auto minmax(0, 1fr) !important; grid-template-areas: "toolbar toolbar toolbar" "canvas sheet tabs" !important; min-height: 240px; }
+.slt-root[data-layout="mobile"][data-landscape][data-no-toolbar] { grid-template-rows: minmax(0, 1fr) !important; grid-template-areas: "canvas sheet tabs" !important; }
+.slt-root[data-layout="mobile"][data-landscape][data-sheet-closed] { grid-template-columns: minmax(0, 1fr) 0 auto !important; }
+.slt-root[data-layout="mobile"][data-landscape] .slt-sheet { border-top: 0; border-left: 1px solid var(--_slt-border); }
+.slt-root[data-layout="mobile"][data-landscape] .slt-tabs { flex-direction: column; overflow-y: auto; border-top: 0; border-left: 1px solid var(--_slt-border); padding-bottom: 0; padding-right: env(safe-area-inset-right, 0); }
+.slt-root[data-layout="mobile"][data-landscape] .slt-tab[data-active] { border-left-color: var(--_slt-accent); }
+.slt-root[data-layout="mobile"][data-landscape] .slt-tab { flex: 1 0 auto; min-height: 40px; padding: 4px 6px; font-size: 10px; border-top: 0; border-left: 2px solid transparent; }
 .slt-root[data-layout="mobile"] .slt-toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x; min-width: 0; }
 .slt-root[data-layout="mobile"] .slt-toolbar::-webkit-scrollbar { display: none; }
 .slt-root[data-layout="mobile"] .slt-toolbar > * { flex: none; }
