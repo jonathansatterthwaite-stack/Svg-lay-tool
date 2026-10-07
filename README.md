@@ -594,6 +594,18 @@ The Variables tab lists the formula functions in three groups, **Math**,
 Time or host value) puts it into the formula last written in, at the caret; a
 function's first argument is left selected to type over.
 
+**The Variables popup** (`editor.openVariables()`): the Variables tab in a bigger window, in
+pages (Values, Bindings, Try it, Interact), with a **keypad** under them that puts values (the
+drawing's, the time's, the host's groups), functions (Math, Logic, Animation), digits and symbols
+into the formula last written in, at its caret, without a phone keyboard. On the mobile layout the
+Variables tab opens it; on a desktop, the tab's **Open larger** button.
+
+**The shape popup** (`editor.openShapePopup(shapeId)`, Preferences → Canvas & view → Shape popup,
+`shapePopup`): picking a shape in the library opens a live preview with the three tool tabs in a
+sentence each (a short tour) and their most useful settings to set first: size and the shape's
+own settings (Layer), Outline only / Rounded / Glow / Shadow (Modifiers), Still / Spin / Pulse /
+Blink (Variables). **Skip this next time** turns it off; shapes then go straight in.
+
 Snapping (Preferences → Snapping): `snapToShapes` (moving a layer lines its
 edges and centre up with other layers' and the canvas's, showing pink guide
 lines; the grid still takes an axis that didn't line up; off during a fine

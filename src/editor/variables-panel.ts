@@ -40,12 +40,16 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * Variables (document-level sliders), the time built-ins, and the selected
  * layer's bindings: expressions that drive its properties.
  */
+/** The Variables popup's pages: one of the tab's sections each. */
+export type VariablesPage = 'values' | 'bindings' | 'try' | 'interact';
+
 export class VariablesPanel {
   readonly el: HTMLDivElement;
   /** Ids of expanded reference lists ('time' or a group id). */
   private expanded = new Set<string>();
 
-  constructor(private editor: SvgLayEditor) {
+  /** page: the Variables popup's page (one section); none: the whole tab. */
+  constructor(private editor: SvgLayEditor, public page: VariablesPage | null = null) {
     this.el = el('div', { class: 'slt-props slt-variables' });
     this.el.addEventListener('focusin', (e) => {
       const key = (e.target as HTMLElement).dataset?.formula;
@@ -56,10 +60,22 @@ export class VariablesPanel {
   render(): void {
     if (isTypingInside(this.el, this.editor.root instanceof ShadowRoot ? this.editor.root : document)) return;
     this.el.replaceChildren();
+    const sel = this.editor.selectedLayers();
+    if (this.page) {
+      // One page of the popup.
+      const one = sel.length === 1 ? sel[0] : null;
+      const none = (what: string) => section(what, [el('div', { class: 'slt-hint' }, ['Select a layer (in the strip, or tap it on the canvas) to see this.'])]);
+      if (this.page === 'values') this.el.appendChild(this.variablesSection());
+      else if (this.page === 'bindings') this.el.appendChild(this.bindingsSection());
+      else if (this.page === 'try') this.el.appendChild(one ? this.tryItSection(one.id) ?? section('Try it', [el('div', { class: 'slt-hint' }, ["This layer's bindings don't read a value to try. Bind something to a value or the time first."])]) : none('Try it'));
+      else this.el.appendChild(one ? interactSection(this.editor, one) : none('Interact'));
+      return;
+    }
+    // Room to work: the popup (a phone opens it from the tab).
+    this.el.appendChild(el('div', { class: 'slt-row slt-var-larger' }, [button([icon('fit'), 'Open larger'], () => this.editor.openVariables(), { cls: 'slt-small', title: 'Variables in a bigger window, with a keypad for formulas' })]));
     this.el.appendChild(this.variablesSection());
     this.el.appendChild(this.bindingsSection());
     // What touching the selected layer does (hotspots: see interact-panel.ts).
-    const sel = this.editor.selectedLayers();
     if (sel.length === 1) {
       const tryIt = this.tryItSection(sel[0].id);
       if (tryIt) this.el.appendChild(tryIt);
@@ -123,9 +139,8 @@ export class VariablesPanel {
    * selected; a function's first argument is left selected, to type over. With no formula written in
    * yet, the first one in the panel.
    */
-  private insertSnippet(text: string): void {
-    const boxes = [...this.el.querySelectorAll<HTMLInputElement>('input[data-formula]')];
-    const input = boxes.find((b) => b.dataset.formula === this.lastFormula) ?? boxes[0];
+  insertSnippet(text: string): void {
+    const input = this.formulaBox();
     if (!input) return;
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
@@ -140,6 +155,38 @@ export class VariablesPanel {
     input.focus();
     input.setSelectionRange(selA, selB);
     this.lastFormula = input.dataset.formula ?? null;
+    this.changed(input);
+  }
+
+  /** The formula box last written in, else the first one shown. */
+  private formulaBox(): HTMLInputElement | undefined {
+    const boxes = [...this.el.querySelectorAll<HTMLInputElement>('input[data-formula]')];
+    return boxes.find((b) => b.dataset.formula === this.lastFormula) ?? boxes[0];
+  }
+
+  /** The keypad's delete: what's selected in the formula, else the character before the caret. */
+  backspace(): void {
+    const input = this.formulaBox();
+    if (!input) return;
+    let start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    if (start === end) start = Math.max(0, start - 1);
+    input.value = input.value.slice(0, start) + input.value.slice(end);
+    input.focus();
+    input.setSelectionRange(start, start);
+    this.lastFormula = input.dataset.formula ?? null;
+    this.changed(input);
+  }
+
+  /** Save formulas changed by the keypad and not yet saved (the popup closing takes their boxes away). */
+  flushPending(): void {
+    for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-pending]')) {
+      delete input.dataset.pending;
+      input.dispatchEvent(new Event('change'));
+    }
+  }
+
+  private changed(input: HTMLInputElement): void {
     input.dispatchEvent(new Event('input')); // its result updates; it's saved when you leave it
     // (a change made here doesn't raise "change" by itself on leaving: do it then)
     if (!input.dataset.pending) {

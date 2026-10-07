@@ -59,7 +59,7 @@ export class LibraryPanel {
       svgEl('path', { d, fill: 'currentColor', 'fill-rule': def.fillRule ?? 'nonzero' }),
     ]);
     const btn = el('button', { class: 'slt-shape-btn', type: 'button', title: def.name, 'aria-label': `Add ${def.name}` }, [preview]);
-    btn.addEventListener('click', () => this.editor.addShape(def.id));
+    btn.addEventListener('click', () => (this.editor.preferences.shapePopup ? this.editor.openShapePopup(def.id) : this.editor.addShape(def.id)));
     return btn;
   }
 }

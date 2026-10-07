@@ -48,6 +48,8 @@ export interface EditorPreferences {
   shapeOutline: boolean;
   /** Phone layout: the tool tabs fold away while you move, resize or turn something, or move the view. */
   foldTools: boolean;
+  /** Adding a shape opens a popup (a short tour of the tabs, with settings to set first); off: it goes straight in. */
+  shapePopup: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -70,6 +72,7 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   motionTrail: true,
   shapeOutline: true,
   foldTools: true,
+  shapePopup: true,
 };
 
 const clampNum = (v: unknown, lo: number, hi: number, d: number) =>
@@ -101,6 +104,7 @@ export function resolvePreferences(p: Partial<EditorPreferences> | null | undefi
     motionTrail: q.motionTrail !== false,
     shapeOutline: q.shapeOutline !== false,
     foldTools: q.foldTools !== false,
+    shapePopup: q.shapePopup !== false,
   };
 }
 
@@ -262,6 +266,7 @@ export class PreferencesDialog {
         choice('Touching the canvas', 'Only the view bar: a stray finger never moves the view. Two fingers always pinch to zoom.', p.canvasTouch,
           [['pan', 'Moves the view'], ['pad', 'Only the view bar']], (v) => set({ canvasTouch: v })),
         toggle('Lock the view', 'Dragging, pinching and scrolling on the canvas never pan or zoom (the view bar and the toolbar still do)', p.lockView, (v) => set({ lockView: v })),
+        toggle('Shape popup', 'Adding a shape opens a short guide to the tabs, with its size, look and a first animation to set before it goes in', p.shapePopup, (v) => set({ shapePopup: v })),
         toggle('Fold the tools away (phone layout)', 'The tool tabs fold down while you move, resize or turn something, or move the view, to give the canvas the room; tap a tab to bring them back', p.foldTools, (v) => set({ foldTools: v })),
         el('h4', {}, ['View bar']),
         choice('View bar', 'Along the canvas’s bottom edge: a touchpad button to drag the view, zoom, fit, 1:1, centre on the selection. Auto: shown on touch.', p.viewPad,

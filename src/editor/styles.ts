@@ -309,6 +309,42 @@ input.slt-viewpad-zoom { width: clamp(70px, 18vw, 160px); margin: 0; accent-colo
 .slt-prefs-preview .slt-move-arrows { fill: var(--_slt-accent-text); stroke: var(--_slt-accent-text); stroke-width: 1.4; }
 .slt-prefs-foot { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--_slt-border); }
 .slt-prefs-foot .slt-spacer { flex: 1; }
+/* The Variables popup (a phone's Variables tab; Open larger on a desktop) */
+.slt-varpop, .slt-shapepop { width: min(720px, calc(100% - 24px)); height: min(88%, 860px); display: flex; flex-direction: column; background: var(--_slt-panel); color: var(--_slt-text); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); overflow: hidden; }
+.slt-shapepop { width: min(520px, calc(100% - 24px)); height: auto; max-height: min(92%, 860px); }
+.slt-varpop-pages { flex: none; flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--_slt-border); }
+.slt-varpop-pages .slt-prefs-tab { white-space: nowrap; border: 1px solid var(--_slt-border); border-radius: 14px; padding: 4px 12px; }
+.slt-varpop-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.slt-varpop-body .slt-variables { height: auto; }
+.slt-var-larger { justify-content: flex-end; padding: 6px 10px 0; }
+.slt-varpop-keypad { flex: none; border-top: 1px solid var(--_slt-border); background: var(--_slt-panel-2); padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0)); }
+.slt-varpop-keytabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-bottom: 6px; }
+.slt-varpop-keytabs button { flex: none; padding: 3px 10px; border: 1px solid var(--_slt-border); border-radius: 12px; background: var(--_slt-panel); color: var(--_slt-text); font: inherit; font-size: 12px; cursor: pointer; }
+.slt-varpop-keytabs button[data-active] { background: var(--_slt-text); color: var(--_slt-panel); border-color: var(--_slt-text); }
+.slt-key-list { display: flex; flex-wrap: wrap; gap: 4px; max-height: 92px; overflow-y: auto; margin-bottom: 6px; }
+.slt-key-symbols { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.slt-key { min-height: 34px; padding: 4px 9px; border: 1px solid var(--_slt-border); border-radius: 7px; background: var(--_slt-panel); color: var(--_slt-text); font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; cursor: pointer; touch-action: manipulation; }
+.slt-key:active { background: var(--_slt-selected); }
+.slt-key-value { background: color-mix(in srgb, #2f9e6e 12%, var(--_slt-panel)); border-color: color-mix(in srgb, #2f9e6e 35%, var(--_slt-border)); }
+.slt-key-sym { font-size: 15px; padding: 4px 0; }
+/* The shape popup (adding a shape) */
+.slt-shapepop-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; }
+.slt-shapepop-preview { height: 170px; margin-bottom: 8px; border-radius: 10px; background: var(--_slt-canvas); display: flex; align-items: center; justify-content: center; }
+.slt-shapepop-preview svg { width: 160px; height: 160px; }
+.slt-shapepop-step { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--_slt-border); }
+.slt-shapepop-step > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.slt-shapepop-step small { color: var(--_slt-muted); font-size: 12px; line-height: 1.35; }
+.slt-shapepop-n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--_slt-accent); color: var(--_slt-accent-text); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+.slt-shapepop-row { display: flex; align-items: center; gap: 8px; }
+.slt-shapepop-row label { flex: 0 0 74px; color: var(--_slt-muted); font-size: 12px; }
+.slt-shapepop-row .slt-prefs-value { min-width: 36px; }
+.slt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.slt-chips button { padding: 4px 11px; border: 1px solid var(--_slt-border); border-radius: 14px; background: var(--_slt-panel); color: var(--_slt-text); font: inherit; font-size: 12px; cursor: pointer; }
+.slt-chips button[data-active] { background: var(--_slt-accent); color: var(--_slt-accent-text); border-color: var(--_slt-accent); }
+.slt-shapepop-skip { font-size: 12px; color: var(--_slt-muted); }
+.slt-root[data-layout="mobile"] .slt-varpop, .slt-root[data-layout="mobile"] .slt-shapepop { width: 100%; height: calc(100% - 24px); max-height: none; border-radius: 16px 16px 0 0; }
+.slt-root[data-layout="mobile"] .slt-shapepop { height: auto; max-height: calc(100% - 24px); }
+
 /* On a phone: a sheet from the bottom, the pages as chips */
 .slt-root[data-layout="mobile"] .slt-prefs-backdrop { align-items: flex-end; }
 .slt-root[data-layout="mobile"] .slt-prefs { width: 100%; max-height: 88%; border-radius: 16px 16px 0 0; }

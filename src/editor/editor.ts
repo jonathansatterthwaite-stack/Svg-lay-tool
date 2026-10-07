@@ -59,6 +59,8 @@ import { resolveFeatures, THEME_TOKENS, type EditorFeatures, type ThemeColors, t
 import { EDITOR_STYLES } from './styles';
 import { Toolbar } from './toolbar';
 import { PreferencesDialog, resolvePreferences, type EditorPreferences } from './preferences';
+import { ShapePopup } from './shape-popup';
+import { VariablesPopup } from './variables-popup';
 
 export interface EditorOptions {
   /** Initial document. Takes precedence over width/height/background. */
@@ -200,6 +202,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
   /** How the editor feels to use (see EditorPreferences). */
   preferences: EditorPreferences;
   private prefsDialog: PreferencesDialog | null = null;
+  private varPopup: VariablesPopup | null = null;
+  private shapePopup: ShapePopup | null = null;
 
   private rootEl: HTMLElement;
   private canvas: CanvasView;
@@ -512,7 +516,32 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.showTab(this.activeTab, false);
   }
 
+  /** The Variables tab in a bigger window, with a keypad for formulas (a phone's Variables tab opens it). */
+  openVariables(): void {
+    if (this.varPopup || !this.features.variables) return;
+    this.varPopup = new VariablesPopup(this, () => {
+      this.varPopup = null;
+      this.refreshVariablesPanel();
+      this.canvas.renderOverlay();
+    });
+    this.rootEl.appendChild(this.varPopup.el);
+  }
+
+  /** Adding a shape, by way of its popup (see ShapePopup; Preferences → Shape popup). */
+  openShapePopup(shapeId: string): void {
+    this.shapePopup?.close();
+    this.shapePopup = new ShapePopup(this, shapeId, () => (this.shapePopup = null));
+    this.rootEl.appendChild(this.shapePopup.el);
+    (this.shapePopup.el.querySelector('.slt-primary') as HTMLButtonElement | null)?.focus();
+  }
+
   private toggleTab(tab: MobileTab): void {
+    // On a phone, the Variables tab is the popup: the sheet has too little room for formulas.
+    if (tab === 'variables' && this.layout === 'mobile') {
+      if (this.sheetOpen) this.showTab(this.activeTab, false);
+      this.openVariables();
+      return;
+    }
     // Desktop tabs cannot collapse (the side column keeps its width); mobile ones can.
     if (this.layout === 'mobile' && this.activeTab === tab && this.sheetOpen) this.showTab(tab, false);
     else this.showTab(tab, true);
@@ -652,7 +681,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     return layer.id;
   }
 
-  private nextColor(i: number): string {
+  /** The colour a new shape gets (the i-th of its kind). */
+  nextColor(i: number): string {
     const mode = this.features.colorMode;
     if (mode === 'monochrome') return this.features.monoColor;
     if (mode === 'grayscale') return grayHex([232, 160, 96, 200, 128, 64][i % 6]);
@@ -986,6 +1016,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
       if (this.activeTab === 'modifiers') this.modifiersPanel?.render();
       if (this.activeTab === 'variables') this.variablesPanel?.render();
     }
+    this.varPopup?.render();
     this.syncAnimation();
   }
 
@@ -1124,6 +1155,7 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
 
   private refreshVariablesPanel(): void {
     if (this.sheetOpen && this.activeTab === 'variables') this.variablesPanel?.render();
+    this.varPopup?.panel.render();
     if (this.propsPanel && this.propsPanel.mode === 'auto') this.propsPanel.render();
   }
 
@@ -1197,6 +1229,8 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     if (this.animTimer) clearInterval(this.animTimer);
     this.layoutObserver?.disconnect();
     this.prefsDialog?.el.remove();
+    this.varPopup?.el.remove();
+    this.shapePopup?.close();
     this.canvas.destroy();
     this.toolbar?.destroy();
     this.removeAllListeners();
