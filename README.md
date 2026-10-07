@@ -570,9 +570,9 @@ Unknown or out-of-range values fall back to the defaults (`resolvePreferences`).
 | `markerOpacity` | `1`, 0.2–1                                | origin, pivot and anchor markers |
 | `touchArea`     | `6`, 0–24 px                              | invisible catch area around every handle |
 | `moveHandle`    | `'always'`, `'touch'`, `'off'`            | the move handle |
-| `canvasTouch`   | `'pad'`, `'pan'`                          | on touch, whether one finger dragging the canvas pans (`'pan'`) or only the view pad does; two fingers always pinch |
-| `viewPad`       | `'auto'` (on touch), `'right'`, `'left'`, `'hidden'` | the view pad over the canvas: drag its disc to pan, a zoom slider, fit, 1:1, zoom to the selection |
-| `lockView`      | `false`, `true`                           | dragging, pinching and scrolling the canvas never pan or zoom (the pad and the toolbar still do); the toolbar's lock button toggles it |
+| `canvasTouch`   | `'pad'`, `'pan'`                          | on touch, whether one finger dragging the canvas pans (`'pan'`) or only the view bar does; two fingers always pinch |
+| `viewPad`       | `'auto'` (on touch), `'always'`, `'hidden'` | the view bar along the canvas's bottom edge: fit, 1:1 and centre on the selection; a touchpad button (press and drag to move the view; arrow keys too); the zoom |
+| `lockView`      | `false`, `true`                           | dragging, pinching and scrolling the canvas never pan or zoom (the view bar and the toolbar still do); the toolbar's lock button toggles it |
 
 Precision (Preferences → Precision): `readout` (values beside the pointer
 while dragging), `fineFactor` (½, ¼ or ⅒: hold Ctrl/⌘ while dragging, or Fine
@@ -604,8 +604,8 @@ changes), and a **motion trail** (`motionTrail`): faint outlines of the layer
 at nine steps across that variable's range, joined by a path. Preferences also
 lists every shortcut (Shortcuts page).
 
-On the mobile layout, while the pad shows, the toolbar leaves its zoom and fit
-buttons to the pad. **F** zooms to the selection (the whole drawing when
+On the mobile layout, while the view bar shows, the toolbar leaves its zoom and fit
+buttons to the view bar. **F** zooms to the selection (the whole drawing when
 nothing is selected).
 
 The canvas hint, tooltips and the Shortcuts section of the Canvas tab are

@@ -120,7 +120,7 @@ export class PropertiesPanel {
     const f = this.editor.features;
     const p = this.editor.preferences;
     const pick = (p.moveHandle !== 'off' ? 'Drag the ✥ handle to move a layer, or ' : '') + (f.canvasInteraction === 'hold' ? 'hold it to pick it up' : 'drag it');
-    const pan = p.lockView ? 'the view is locked (the pad still moves it)' : p.canvasTouch === 'pad' ? 'pinch to zoom, the view pad pans' : 'pinch to zoom, drag elsewhere to pan';
+    const pan = p.lockView ? 'the view is locked (the view bar still moves it)' : p.canvasTouch === 'pad' ? 'pinch to zoom, the view bar pans' : 'pinch to zoom, drag elsewhere to pan';
     if (this.editor.inputMode() === 'touch') {
       return section('Tips', [
         el('div', { class: 'slt-hint' }, [`${pick} · drag a handle to resize along the canvas axes · drag the ring to rotate · ${pan}`]),

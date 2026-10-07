@@ -242,26 +242,21 @@ export const EDITOR_STYLES = `
 .slt-overlay .slt-anchor-label { fill: var(--_slt-text); font: 600 11px var(--_slt-font); paint-order: stroke; stroke: var(--_slt-canvas); stroke-width: 3px; pointer-events: none; opacity: var(--_slt-marker-op, 1); }
 .slt-overlay .slt-marquee { fill: var(--_slt-selected); stroke: var(--_slt-accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .slt-canvas-hint { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--_slt-muted); pointer-events: none; }
-.slt-pad-left .slt-canvas-hint { display: none; }
 .slt-btn.slt-on { color: var(--_slt-accent); background: var(--_slt-selected); }
 
-/* The view pad (over the canvas) */
-.slt-viewpad { position: absolute; bottom: 10px; right: 10px; display: flex; align-items: center; gap: 6px; padding: 6px; background: var(--_slt-panel); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); touch-action: none; user-select: none; -webkit-user-select: none; }
-.slt-viewpad[data-side="left"] { right: auto; left: 10px; }
-.slt-viewpad[hidden], .slt-toolbar [hidden] { display: none !important; }
-.slt-viewpad-disc { position: relative; width: 76px; height: 76px; border-radius: 50%; background: var(--_slt-panel-2); border: 1px solid var(--_slt-border); cursor: grab; flex: none; }
-.slt-viewpad-disc[data-active] { cursor: grabbing; }
-.slt-viewpad-knob { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px; border-radius: 50%; background: var(--_slt-accent); opacity: 0.85; pointer-events: none; }
-.slt-viewpad-arrow { position: absolute; width: 22px; height: 22px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--_slt-muted); cursor: pointer; }
-.slt-viewpad-arrow:hover { color: var(--_slt-text); background: var(--_slt-hover); }
-.slt-viewpad-arrow .slt-icon svg { width: 13px; height: 13px; }
-.slt-viewpad-n { left: 26px; top: 1px; } .slt-viewpad-s { left: 26px; bottom: 1px; }
-.slt-viewpad-w { left: 1px; top: 26px; transform: rotate(180deg); } .slt-viewpad-e { right: 1px; top: 26px; }
-.slt-viewpad-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.slt-viewpad-btn { min-width: 26px; height: 22px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--_slt-border); border-radius: 6px; background: var(--_slt-panel); color: var(--_slt-text); font: 600 10px var(--_slt-font); cursor: pointer; }
+.slt-viewbar[hidden], .slt-toolbar [hidden] { display: none !important; }
+/* The view bar (along the canvas's bottom edge) */
+.slt-viewbar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 10px; background: color-mix(in srgb, var(--_slt-panel) 92%, transparent); border-top: 1px solid var(--_slt-border); touch-action: none; user-select: none; -webkit-user-select: none; z-index: 2; }
+.slt-viewbar-group { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.slt-viewbar-pad { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 34px; padding: 0; border: 1px solid var(--_slt-border); border-radius: 17px; background: var(--_slt-panel-2); color: var(--_slt-muted); cursor: grab; touch-action: none; flex: none; }
+.slt-viewbar-pad[data-active] { cursor: grabbing; background: var(--_slt-selected); color: var(--_slt-accent); border-color: var(--_slt-accent); }
+.slt-viewbar-pad .slt-viewpad-knob { display: none; }
+input.slt-viewpad-zoom { width: clamp(70px, 18vw, 160px); margin: 0; accent-color: var(--_slt-accent); }
+.slt-has-viewbar .slt-canvas-hint { display: none; }
+.slt-has-viewbar .slt-nudge { bottom: 58px; }
+.slt-viewpad-btn { min-width: 30px; height: 30px; padding: 0 4px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--_slt-border); border-radius: 6px; background: var(--_slt-panel); color: var(--_slt-text); font: 600 10px var(--_slt-font); cursor: pointer; }
 .slt-viewpad-btn:hover { background: var(--_slt-hover); }
 .slt-viewpad-btn .slt-icon svg { width: 13px; height: 13px; }
-input.slt-viewpad-zoom { writing-mode: vertical-lr; direction: rtl; width: 18px; height: 50px; margin: 0; accent-color: var(--_slt-accent); }
 
 /* The nudge pad (touch) */
 .slt-nudge { position: absolute; bottom: 10px; left: 10px; display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 34px); gap: 3px; padding: 6px; background: var(--_slt-panel); border: 1px solid var(--_slt-border); border-radius: 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18); touch-action: none; user-select: none; -webkit-user-select: none; }

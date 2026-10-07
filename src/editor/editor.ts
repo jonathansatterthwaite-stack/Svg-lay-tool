@@ -77,7 +77,7 @@ export interface EditorOptions {
   features?: Partial<EditorFeatures>;
   /**
    * The person's preferences (handle size, what touching the canvas does, the
-   * view pad...), as saved by the host app; save them again on `preferenceschange`.
+   * view bar...), as saved by the host app; save them again on `preferenceschange`.
    */
   preferences?: Partial<EditorPreferences>;
   /** Variables the host app exposes to formulas, grouped for the Variables panel. */
@@ -771,10 +771,10 @@ export class SvgLayEditor extends Emitter<EditorEvents> {
     this.emit('preferenceschange', { ...next });
   }
 
-  /** Whether the view pad is showing (Preferences: View pad; auto shows it on touch). */
+  /** Whether the view bar is showing (Preferences: View bar; auto shows it on touch). */
   viewPadShown(): boolean {
     const p = this.preferences.viewPad;
-    return p === 'right' || p === 'left' || (p === 'auto' && this.inputMode() === 'touch');
+    return p === 'always' || (p === 'auto' && this.inputMode() === 'touch');
   }
 
   /** Open the Preferences window. */

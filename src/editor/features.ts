@@ -62,7 +62,7 @@ export interface EditorFeatures {
    * otherwise keyboard and mouse (with ⌘ on Apple devices).
    */
   input: 'auto' | 'touch' | 'mouse';
-  /** Show the Preferences button (handles, canvas and view pad settings). */
+  /** Show the Preferences button (handles, canvas and view bar settings). */
   preferences: boolean;
 }
 

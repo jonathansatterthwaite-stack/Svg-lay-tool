@@ -7,8 +7,10 @@ describe('resolvePreferences', () => {
     expect(resolvePreferences(null)).toEqual(DEFAULT_PREFERENCES);
   });
   it('keeps valid values and clamps numbers', () => {
-    const p = resolvePreferences({ handleSize: 40, handleOpacity: 0.05, touchArea: 12, moveHandle: 'touch', canvasTouch: 'pan', viewPad: 'left', lockView: true });
-    expect(p).toMatchObject({ handleSize: 28, handleOpacity: 0.2, touchArea: 12, moveHandle: 'touch', canvasTouch: 'pan', viewPad: 'left', lockView: true });
+    const p = resolvePreferences({ handleSize: 40, handleOpacity: 0.05, touchArea: 12, moveHandle: 'touch', canvasTouch: 'pan', viewPad: 'always', lockView: true });
+    expect(p).toMatchObject({ handleSize: 28, handleOpacity: 0.2, touchArea: 12, moveHandle: 'touch', canvasTouch: 'pan', viewPad: 'always', lockView: true });
+    // older saves: a pad on one side is now the bar, always shown
+    expect(resolvePreferences({ viewPad: 'left' as never }).viewPad).toBe('always');
   });
   it('drops what it does not know', () => {
     const p = resolvePreferences({ moveHandle: 'sometimes', handleOpacity: 'x', lockView: 'yes', extra: 1 } as never);

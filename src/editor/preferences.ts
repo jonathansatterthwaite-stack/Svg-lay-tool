@@ -5,7 +5,7 @@ import { icon } from './icons';
 
 /**
  * How the editor feels to use: handle sizes, what touching the canvas does,
- * the view pad. They belong to the person, not the drawing: the host app
+ * the view bar. They belong to the person, not the drawing: the host app
  * passes saved ones in (`preferences` option) and saves them again on
  * `preferenceschange`.
  */
@@ -20,11 +20,11 @@ export interface EditorPreferences {
   touchArea: number;
   /** A grab point in the middle of the selection, to move it without press and hold. */
   moveHandle: 'always' | 'touch' | 'off';
-  /** On touch: whether a finger dragging the canvas moves the view, or only the view pad does (pinching always zooms). */
+  /** On touch: whether a finger dragging the canvas moves the view, or only the view bar does (pinching always zooms). */
   canvasTouch: 'pan' | 'pad';
-  /** The view pad: shown on touch (auto), always on one side, or hidden. */
-  viewPad: 'auto' | 'right' | 'left' | 'hidden';
-  /** Nothing on the canvas pans or zooms the view (the pad and the toolbar still do). */
+  /** The view bar along the canvas's bottom edge: shown on touch (auto), always, or hidden. */
+  viewPad: 'auto' | 'always' | 'hidden';
+  /** Nothing on the canvas pans or zooms the view (the view bar and the toolbar still do). */
   lockView: boolean;
   /** Values beside the pointer while dragging: x and y, width and height, the angle. */
   readout: boolean;
@@ -87,7 +87,8 @@ export function resolvePreferences(p: Partial<EditorPreferences> | null | undefi
     touchArea: clampNum(q.touchArea, 0, 24, d.touchArea),
     moveHandle: oneOf(q.moveHandle, ['always', 'touch', 'off'] as const, d.moveHandle),
     canvasTouch: oneOf(q.canvasTouch, ['pan', 'pad'] as const, d.canvasTouch),
-    viewPad: oneOf(q.viewPad, ['auto', 'right', 'left', 'hidden'] as const, d.viewPad),
+    // (older saves: the pad on the right or the left is now the bar, always shown)
+    viewPad: q.viewPad === 'right' || q.viewPad === 'left' ? 'always' : oneOf(q.viewPad, ['auto', 'always', 'hidden'] as const, d.viewPad),
     lockView: q.lockView === true,
     readout: q.readout !== false,
     fineFactor: ([0.5, 0.25, 0.1] as const).includes(q.fineFactor as never) ? (q.fineFactor as 0.5 | 0.25 | 0.1) : d.fineFactor,
@@ -258,13 +259,13 @@ export class PreferencesDialog {
       this.previewSlot = null;
       rows.push(
         el('h4', {}, ['Canvas']),
-        choice('Touching the canvas', 'Only the pad: a stray finger never moves the view. Two fingers always pinch to zoom.', p.canvasTouch,
-          [['pan', 'Moves the view'], ['pad', 'Only the pad']], (v) => set({ canvasTouch: v })),
-        toggle('Lock the view', 'Dragging, pinching and scrolling on the canvas never pan or zoom (the pad and the toolbar still do)', p.lockView, (v) => set({ lockView: v })),
+        choice('Touching the canvas', 'Only the view bar: a stray finger never moves the view. Two fingers always pinch to zoom.', p.canvasTouch,
+          [['pan', 'Moves the view'], ['pad', 'Only the view bar']], (v) => set({ canvasTouch: v })),
+        toggle('Lock the view', 'Dragging, pinching and scrolling on the canvas never pan or zoom (the view bar and the toolbar still do)', p.lockView, (v) => set({ lockView: v })),
         toggle('Fold the tools away (phone layout)', 'The tool tabs fold down while you move, resize or turn something, or move the view, to give the canvas the room; tap a tab to bring them back', p.foldTools, (v) => set({ foldTools: v })),
-        el('h4', {}, ['View pad']),
-        choice('View pad', 'Pan, zoom, fit, zoom to the selection. Auto: shown on touch.', p.viewPad,
-          [['auto', 'Auto'], ['right', 'Right'], ['left', 'Left'], ['hidden', 'Hidden']], (v) => set({ viewPad: v })),
+        el('h4', {}, ['View bar']),
+        choice('View bar', 'Along the canvas’s bottom edge: a touchpad button to drag the view, zoom, fit, 1:1, centre on the selection. Auto: shown on touch.', p.viewPad,
+          [['auto', 'Auto'], ['always', 'Always'], ['hidden', 'Hidden']], (v) => set({ viewPad: v })),
       );
     }
     this.body.replaceChildren(...rows);

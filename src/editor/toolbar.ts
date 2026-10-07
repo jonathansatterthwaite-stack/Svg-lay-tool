@@ -64,7 +64,7 @@ export class Toolbar {
       b('zoomIn', 'zoomIn', tip('zoomIn', 'Zoom in', 'Mod+='), () => ed.zoomBy(1.25)),
       b('fit', 'fit', tip('fit', 'Fit to view', 'Mod+0'), () => ed.fitToView()),
       b('zoomSel', 'target', tip('zoomSel', 'Zoom to the selection', 'F'), () => ed.zoomToSelection()),
-      b('lockView', 'unlock', 'Lock the view: the canvas never pans or zooms by touch, drag or scroll (the pad and these buttons still do)',
+      b('lockView', 'unlock', 'Lock the view: the canvas never pans or zooms by touch, drag or scroll (the view bar and these buttons still do)',
         () => ed.setPreferences({ lockView: !ed.preferences.lockView })),
       b('prefs', 'gear', 'Preferences', () => ed.openPreferences()),
       sep(),
@@ -107,7 +107,7 @@ export class Toolbar {
       lock.setAttribute('aria-pressed', on ? 'true' : 'false');
       lock.classList.toggle('slt-on', on);
     }
-    // On a phone the view pad has the zoom and fit buttons: leave room for the rest.
+    // On a phone the view bar has the zoom and fit buttons: leave room for the rest.
     const padZoom = ed.layout === 'mobile' && ed.viewPadShown();
     for (const k of ['zoomOut', 'zoomIn', 'fit', 'zoomSel']) this.buttons.get(k)?.toggleAttribute('hidden', padZoom);
     this.zoomLabel.hidden = padZoom;

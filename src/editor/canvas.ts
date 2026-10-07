@@ -244,9 +244,9 @@ export class CanvasView {
     const p = this.editor.preferences;
     this.updatePad();
     if (p.lockView) {
-      this.hint.textContent = 'The view is locked: the pad and the toolbar still move it';
+      this.hint.textContent = 'The view is locked: the view bar and the toolbar still move it';
     } else if (this.editor.inputMode() === 'touch' && p.canvasTouch === 'pad') {
-      this.hint.textContent = 'The pad moves the view · pinch to zoom · drag the ✥ handle to move a layer';
+      this.hint.textContent = 'The view bar moves the view · pinch to zoom · drag the ✥ handle to move a layer';
     } else if (this.editor.inputMode() === 'touch') {
       this.hint.textContent = hold
         ? 'Drag to pan · pinch to zoom · hold a layer to pick it up'
@@ -270,10 +270,15 @@ export class CanvasView {
     this.editor.viewChanged();
   }
 
+  /** The canvas's height above the view bar (when it shows). */
+  private viewHeight(): number {
+    return (this.stageWrap.clientHeight || 600) - (this.pad.hidden ? 0 : this.pad.offsetHeight);
+  }
+
   fitToView(): void {
     const doc = this.editor.document;
     const w = this.stageWrap.clientWidth || 800;
-    const h = this.stageWrap.clientHeight || 600;
+    const h = this.viewHeight();
     const margin = 32;
     const zoom = Math.max(0.05, Math.min((w - margin * 2) / doc.width, (h - margin * 2) / doc.height));
     const v = this.view;
@@ -287,7 +292,7 @@ export class CanvasView {
   /** Zoom and pan so a world rectangle fills the view (with a margin; at most 8×). */
   fitRect(r: Rect): void {
     const w = this.stageWrap.clientWidth || 800;
-    const h = this.stageWrap.clientHeight || 600;
+    const h = this.viewHeight();
     const margin = 48;
     const zoom = Math.max(0.05, Math.min(8, (w - margin * 2) / Math.max(r.width, 1), (h - margin * 2) / Math.max(r.height, 1)));
     const v = this.view;
@@ -298,7 +303,7 @@ export class CanvasView {
     this.editor.viewChanged();
   }
 
-  /** The preferences changed: handles, the hint and the pad follow. */
+  /** The preferences changed: handles, the hint and the view bar follow. */
   preferencesChanged(): void {
     const p = this.editor.preferences;
     this.el.style.setProperty('--_slt-handle-op', String(p.handleOpacity));
@@ -308,79 +313,79 @@ export class CanvasView {
   }
 
   // -------------------------------------------------------------------------
-  // The view pad: pan by dragging its disc, zoom with its slider, fit, 1:1, zoom to the selection.
+  // The view bar: fit, 1:1, centre on the selection; a touchpad button to move the view; the zoom.
 
+  /**
+   * The view bar, along the canvas's bottom edge (on a phone, the border with the tools): Fit, 1:1
+   * and centre on the selection on the left; in the middle a touchpad button: press it and drag to
+   * move the view; on the right the zoom.
+   */
   private buildPad(): HTMLDivElement {
     const ed = this.editor;
-    const disc = el('div', { class: 'slt-viewpad-disc', title: 'Drag to move the view' }, [this.padKnob]);
-    const step = (dx: number, dy: number) => {
-      this.view.panX += dx;
-      this.view.panY += dy;
-      this.render();
-      ed.viewChanged();
-    };
-    const arrows = [['n', 0, 60, 'up'], ['s', 0, -60, 'down'], ['w', 60, 0, 'left'], ['e', -60, 0, 'right']] as const;
-    for (const [cls, dx, dy, label] of arrows) {
-      const b = el('button', { type: 'button', class: `slt-viewpad-arrow slt-viewpad-${cls}`, title: `Move the view ${label}`, 'aria-label': `Move the view ${label}` }, [icon(cls === 's' ? 'down' : cls === 'n' ? 'up' : 'chevronRight')]);
-      b.addEventListener('pointerdown', (e) => e.stopPropagation());
-      b.addEventListener('click', () => step(dx, dy));
-      disc.appendChild(b);
-    }
-    let start: { x: number; y: number; panX: number; panY: number } | null = null;
-    disc.addEventListener('pointerdown', (e) => {
-      start = { x: e.clientX, y: e.clientY, panX: this.view.panX, panY: this.view.panY };
-      disc.setPointerCapture(e.pointerId);
-      disc.dataset.active = '';
+    const touchpad = el('button', { type: 'button', class: 'slt-viewbar-pad', title: 'Press and drag to move the view, like a touchpad', 'aria-label': 'Move the view (press and drag)' },
+      [this.padKnob, icon('move')]);
+    let last: { x: number; y: number } | null = null;
+    touchpad.addEventListener('pointerdown', (e) => {
+      last = { x: e.clientX, y: e.clientY };
+      touchpad.setPointerCapture(e.pointerId);
+      touchpad.dataset.active = '';
       e.preventDefault();
     });
-    disc.addEventListener('pointermove', (e) => {
-      if (!start) return;
-      const dx = e.clientX - start.x, dy = e.clientY - start.y;
-      this.view.panX = start.panX + dx;
-      this.view.panY = start.panY + dy;
-      const k = Math.min(1, 22 / (Math.hypot(dx, dy) || 1));
-      this.padKnob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
+    touchpad.addEventListener('pointermove', (e) => {
+      if (!last) return;
+      // Like a touchpad: the view follows the finger's movement, wherever the finger goes.
+      this.view.panX += e.clientX - last.x;
+      this.view.panY += e.clientY - last.y;
+      last = { x: e.clientX, y: e.clientY };
       this.render();
       ed.viewChanged();
     });
     const end = () => {
-      start = null;
-      delete disc.dataset.active;
-      this.padKnob.style.transform = '';
+      last = null;
+      delete touchpad.dataset.active;
     };
-    disc.addEventListener('pointerup', end);
-    disc.addEventListener('pointercancel', end);
+    touchpad.addEventListener('pointerup', end);
+    touchpad.addEventListener('pointercancel', end);
+    // Arrow keys on the button nudge the view.
+    touchpad.addEventListener('keydown', (e) => {
+      const d = { ArrowLeft: [40, 0], ArrowRight: [-40, 0], ArrowUp: [0, 40], ArrowDown: [0, -40] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.view.panX += d[0];
+      this.view.panY += d[1];
+      this.render();
+      ed.viewChanged();
+    });
     this.padZoom.addEventListener('input', () => this.setZoom(2 ** Number(this.padZoom.value)));
     const small = (content: string | HTMLElement, title: string, fn: () => void) => {
       const b = el('button', { type: 'button', class: 'slt-viewpad-btn', title, 'aria-label': title }, [content]);
       b.addEventListener('click', fn);
       return b;
     };
-    const pad = el('div', { class: 'slt-viewpad', role: 'group', 'aria-label': 'Move and zoom the view' }, [
-      disc,
-      el('div', { class: 'slt-viewpad-col' }, [
-        small(icon('plus'), 'Zoom in', () => ed.zoomBy(1.25)),
-        this.padZoom,
-        small(icon('minus'), 'Zoom out', () => ed.zoomBy(0.8)),
-      ]),
-      el('div', { class: 'slt-viewpad-col' }, [
+    const bar = el('div', { class: 'slt-viewbar', role: 'group', 'aria-label': 'Move and zoom the view' }, [
+      el('div', { class: 'slt-viewbar-group' }, [
         small(icon('fit'), 'Fit to view', () => ed.fitToView()),
         small('1:1', 'Actual size (100%)', () => ed.setZoom(1)),
-        small(icon('target'), 'Zoom to the selection', () => ed.zoomToSelection()),
+        small(icon('target'), 'Centre on the selection', () => ed.zoomToSelection()),
+      ]),
+      touchpad,
+      el('div', { class: 'slt-viewbar-group' }, [
+        small(icon('minus'), 'Zoom out', () => ed.zoomBy(0.8)),
+        this.padZoom,
+        small(icon('plus'), 'Zoom in', () => ed.zoomBy(1.25)),
       ]),
     ]);
-    // Keep presses and scrolling on the pad off the canvas underneath.
-    pad.addEventListener('pointerdown', (e) => e.stopPropagation());
-    pad.addEventListener('wheel', (e) => e.stopPropagation());
-    return pad;
+    // Keep presses and scrolling on the bar off the canvas underneath.
+    bar.addEventListener('pointerdown', (e) => e.stopPropagation());
+    bar.addEventListener('wheel', (e) => e.stopPropagation());
+    return bar;
   }
 
   private updatePad(): void {
-    const p = this.editor.preferences;
     const show = this.editor.viewPadShown();
     this.pad.hidden = !show;
-    this.pad.dataset.side = p.viewPad === 'left' ? 'left' : 'right';
-    this.stageWrap.classList.toggle('slt-pad-left', show && p.viewPad === 'left');
+    this.stageWrap.classList.toggle('slt-has-viewbar', show);
   }
 
   // -------------------------------------------------------------------------
@@ -444,7 +449,7 @@ export class CanvasView {
     const p = ed.preferences;
     const show = p.nudgePad && ed.inputMode() === 'touch' && ed.selection.length > 0 && !ed.preview;
     this.nudge.hidden = !show;
-    this.nudge.dataset.side = p.viewPad === 'left' && ed.viewPadShown() ? 'right' : 'left';
+
     const fine = this.nudge.querySelector('.slt-nudge-fine') as HTMLButtonElement;
     fine.setAttribute('aria-pressed', this.fineOn ? 'true' : 'false');
     fine.toggleAttribute('data-active', this.fineOn);
