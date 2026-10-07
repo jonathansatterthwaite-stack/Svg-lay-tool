@@ -9,6 +9,7 @@ import {
   transformRect,
   translate,
   unionRects,
+  invert,
   IDENTITY,
 } from './matrix';
 import { EFFECT_DEFS } from './effects';
@@ -304,8 +305,30 @@ export function moveLayer(doc: SvgDocument, id: string, parentId: string | null,
   const loc = locateLayer(doc, id);
   if (!loc) return doc;
   if (parentId === id || (parentId && isDescendantOf(doc, parentId, id))) return doc;
+  // Into or out of a group: re-expressed in its new parent's frame, so it stays where it appears
+  // (a group's position, turn and scale would otherwise carry it off).
+  let layer = loc.layer;
+  if ((loc.parent?.id ?? null) !== parentId) {
+    const from = parentWorldMatrix(doc, id);
+    const to = parentId ? layerWorldMatrix(doc, parentId) : IDENTITY;
+    layer = transformLayerBy(layer, multiply(invert(to), from));
+  }
   const without = mapTree(doc.layers, id, () => null);
-  return { ...doc, layers: insertTree(without, parentId, index, loc.layer) };
+  return { ...doc, layers: insertTree(without, parentId, index, layer) };
+}
+
+/**
+ * A layer placed by `m` (an affine map from its parent's frame to another): its position moved by
+ * `m`, its turn and stretch made to give the same shape, as ungroupLayer does for a group's children.
+ */
+export function transformLayerBy<T extends Layer>(layer: T, m: Mat): T {
+  const p = applyToPoint(m, { x: layer.x, y: layer.y });
+  const lin: Mat2 = { a: m.a, b: m.b, c: m.c, d: m.d };
+  // M·K·R(r) = K'·R(r + g), g the turn of M's first column: K' = M·K·R(-g).
+  const g = (Math.atan2(lin.b, lin.a) * 180) / Math.PI;
+  const K = layer.stretch ?? IDENTITY2;
+  const stretch = mul2(mul2(lin, K), rot2(-g));
+  return normalizeLayerStretch({ ...layer, x: p.x, y: p.y, rotation: layer.rotation + g, stretch });
 }
 
 export type ReorderDirection = 'forward' | 'backward' | 'front' | 'back';

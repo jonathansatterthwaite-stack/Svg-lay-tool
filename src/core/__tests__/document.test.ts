@@ -8,6 +8,7 @@ import {
   groupLayers,
   insertLayer,
   layerWorldBounds,
+  layerLocalBounds,
   layerWorldMatrix,
   locateLayer,
   moveLayer,
@@ -49,6 +50,27 @@ describe('document ops', () => {
     expect(findLayer(removed, a.id)).toBeNull();
     expect(removed.layers).toHaveLength(2);
     expect(updateLayer(doc, 'missing', { x: 1 })).toBe(doc);
+  });
+
+  it('moving a layer into or out of a turned, scaled group keeps it where it appears', () => {
+    const { doc, a, b, c } = sample();
+    const res = groupLayers(doc, [a.id, b.id], 'G')!;
+    // turn the group, scale it and move it: its frame is no longer the canvas's
+    let d = updateLayer(res.doc, res.groupId, (l) => ({ ...(l as GroupLayer), rotation: 37, scale: 1.6, x: l.x + 23, y: l.y - 11 }));
+    const corners = (dd: typeof d, id: string) => {
+      const l = findLayer(dd, id)!;
+      const box = layerLocalBounds(l)!;
+      const m = layerWorldMatrix(dd, id);
+      return [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height]].map(([x, y]) => applyToPoint(m, { x, y }));
+    };
+    const before = corners(d, c.id);
+    const inside = moveLayer(d, c.id, res.groupId, 0);
+    expect(locateLayer(inside, c.id)!.parent!.id).toBe(res.groupId);
+    corners(inside, c.id).forEach((p, i) => { expect(p.x).toBeCloseTo(before[i].x, 6); expect(p.y).toBeCloseTo(before[i].y, 6); });
+    const out = moveLayer(inside, c.id, null, 0);
+    corners(out, c.id).forEach((p, i) => { expect(p.x).toBeCloseTo(before[i].x, 6); expect(p.y).toBeCloseTo(before[i].y, 6); });
+    // within the same parent, a move is only a reorder: nothing changes
+    expect(findLayer(moveLayer(d, c.id, null, 0), c.id)).toEqual(findLayer(d, c.id));
   });
 
   it('groups and ungroups without moving anything on screen', () => {
